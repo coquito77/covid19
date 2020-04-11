@@ -1,0 +1,1524 @@
+---
+title: "Untitled"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(xml2)
+library(rvest)
+library(sf)
+
+#setwd("")
+
+options(scipen = 999)
+
+rm(list = ls()) #start with empty workspace
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r todo, eval = FALSE}
+
+1. get census tract pop by age
+2. get H1N1 counts of infected, hospitalized, and death -- done
+3. extrapolate to pop from step 1 and month.abb
+3. get calif hospital bed capacity
+
+```
+
+
+```{r getData, eval = FALSE}
+
+linkEstimates <- "https://www.cdc.gov/H1N1flu/" %>%
+  read_html() %>%
+  html_nodes("a") %>%
+  html_attr("href") %>%
+  .[grepl("estimates", .)] %>%
+  paste0("https://www.cdc.gov", .) %>% # t %>%
+  read_html() %>%
+  html_nodes("a") %>%
+  html_attr("href") %>%
+  .[grepl("estimates", ., ignore.case = TRUE)] %>%
+  sapply(., function(x)
+    case_when(
+      grepl("h1n1flu", x, ignore.case = TRUE) ~ paste0("https://www.cdc.gov", x),
+      TRUE ~  paste0("https://www.cdc.gov/h1n1flu/", x)
+    )) %>%
+  as.list() %>%
+  as.character()
+
+data_ <- list()
+
+startTime <- Sys.time() # start timer
+
+for (i in seq_along(linkEstimates)) {
+  
+  timediff <- Sys.time() - startTime 
+  
+  print(paste0(
+    i,
+    " of "
+    ,   length(linkEstimates)
+    ," -- ",as.double(timediff, units = "auto") %>% signif(.,3)
+    ," "
+    ,units(timediff)
+    ,
+    " -- ",
+    linkEstimates[i]
+  ))
+  
+  data_[[i]] <- linkEstimates[i] %>% 
+    read_html(.) %>%
+    html_table(fill = TRUE, header = NA) %>% 
+    as.data.frame() %>% # t %>% 
+    setNames( .[1,] %>% unlist() %>% as.character()) %>% 
+    setNames(gsub("[^[:alnum:]]", perl = TRUE, "", names(.))) %>% 
+    setNames( make.names(names(.), unique = TRUE)) %>% 
+    mutate(type = case_when(grepl("Cases$|Hospitalizations$|Deaths$",X2009H1N1 )~ X2009H1N1),
+           type = zoo::na.locf(type, na.rm = FALSE) ) %>% 
+    mutate_all(list(~trimws(gsub("\\s+", " ", .)))) %>% 
+    separate(EstimatedRange, c("lowEst", "highEst"), "to", extra = "merge") %>% 
+    filter(!is.na(type)) %>% 
+    pivot_longer(-c(X2009H1N1,type)
+                 , names_to = "metric", values_to = "value") %>% 
+    mutate(Valuenum =  gsub("[^[:digit:].]", "", value),
+           Valuenum = as.numeric(Valuenum),
+           Valuenum  = case_when(grepl("million", value)  ~ Valuenum * 1e6,
+                                 grepl("billion", value)  ~ Valuenum * 1e9,
+                                 TRUE ~ Valuenum *1),
+           link = linkEstimates[i]) #%>% View
+}
+
+cdc_estimates <- data_ %>% # head(1000) %>% # "541/541 2.3 mins"
+  plyr::ldply(data.frame)
+
+save(cdc_estimates, file = "cdc_estimates.RData")
+
+# get hospital data from the state
+
+# unlink("hosp18.RData")
+
+if(!file.exists("hosp18.RData")) {
+  
+  print("Wait for file to be downloaded")
+  
+  tmp <- tempfile(fileext = ".xlsx")
+  
+  download.file("https://data.chhs.ca.gov/dataset/1902083c-f16a-434d-b8ac-f7a573a305df/resource/71b3ecc0-961d-44ff-8f6b-fdaded864380/download/hosp18_util_data_final.xlsx" 
+                ,mode = "wb"
+                ,tmp)
+  
+  hosp18 <- readxl::read_excel(tmp,
+                               sheet = 2,
+                               ,col_types = "text") %>% 
+    #select(2:40, contains("bed"), contains("EMER_")) %>% 
+    setNames(make.names(names(.)))
+  
+  unlink(tmp)
+  
+  save(hosp18, file = "hosp18.RData")
+  
+} else {
+  
+  print("file has been downloaded")
+  
+}
+
+hosp18 %>% names %>% View
+
+hosp18 %>% filter(HEALTH_SVC_AREA == "12 - Inland Counties" & LIC_CAT == "General Acute Care Hospital") %>% 
+  select(FAC_NAME, LIC_CAT, TOT_LIC_BEDS
+         , IC_LIC_BEDS, ACUTE_RESPIRATORY_CARE_LIC_BEDS) %>%
+  mutate_at(vars( contains("BED"))
+            ,list(~as.numeric(.))) %>% View()
+
+# download state and census track shape files
+# https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html
+
+if(file.exists("cb_2018_us_county_500k.Rdata")) {
+  
+  print("file has been unziped already")
+  
+} else {
+  
+  ifelse(!dir.exists(file.path("./shapefiles")),
+         dir.create(file.path("./shapefiles")), FALSE)
+  
+  td = tempdir()
+  # create the placeholder file
+  tf = tempfile(tmpdir = td, fileext = ".zip")
+  # download into the placeholder file
+  download.file("https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip"
+                , tf)
+  
+  # get the name of the first file in the zip archive
+  fname = unzip(tf, exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
+  
+  cb_2018_us_county_500k = sf::st_read("./shapefiles/cb_2018_us_county_500k.shp") %>% # 
+    #st_transform(., 2229) %>% # change coordinte system to LA County official system
+    sf::st_transform(., 4326) # change it to GPS satellite navigation system
+  
+  sf::st_crs(cb_2018_us_county_500k)
+  
+  save(cb_2018_us_county_500k, file = "cb_2018_us_county_500k.Rdata")
+  
+  unlink(td)
+  unlink(tf)
+  
+}
+
+if(file.exists("cb_2018_us_county_500k.Rdata")) {
+  
+  print("file has been unziped already")
+  
+} else {
+  
+  ifelse(!dir.exists(file.path("./shapefiles")),
+         dir.create(file.path("./shapefiles")), FALSE)
+  
+  td = tempdir()
+  # create the placeholder file
+  tf = tempfile(tmpdir = td, fileext = ".zip")
+  # download into the placeholder file
+  download.file("https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_06_tract_500k.zip"
+                , tf)
+  
+  # get the name of the first file in the zip archive
+  fname = unzip(tf,
+                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
+  
+  cb_2018_06_tract_500 <- list.files(recursive = TRUE
+                                     ,pattern = "shp$") %>% 
+    .[grepl("cb_2018_06_tract_500",.)] %>% 
+    sf::read_sf(quiet = TRUE, stringsAsFactors = FALSE) %>% 
+    sf::st_transform(., 4269)
+  
+  sf::st_crs(cb_2018_06_tract_500)
+  
+  save(cb_2018_06_tract_500, file = "cb_2018_06_tract_500.Rdata")
+  
+  unlink(td)
+  unlink(tf)
+  
+}
+
+if(file.exists("cb_2018_us_county_500k.Rdata")) {
+  
+  print("file has been unziped already")
+  
+} else {
+  
+  ifelse(!dir.exists(file.path("./shapefiles")),
+         dir.create(file.path("./shapefiles")), FALSE)
+  
+  td = tempdir()
+  # create the placeholder file
+  tf = tempfile(tmpdir = td, fileext = ".zip")
+  # download into the placeholder file
+  download.file("https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_06_tract_500k.zip"
+                , tf)
+  
+  # get the name of the first file in the zip archive
+  fname = unzip(tf,
+                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
+  
+  cb_2018_06_tract_500 <- list.files(recursive = TRUE
+                                     ,pattern = "shp$") %>% 
+    .[grepl("cb_2018_06_tract_500",.)] %>% 
+    sf::read_sf(quiet = TRUE, stringsAsFactors = FALSE) %>% 
+    sf::st_transform(., 4269)
+  
+  sf::st_crs(cb_2018_06_tract_500)
+  
+  save(cb_2018_06_tract_500, file = "cb_2018_06_tract_500.Rdata")
+  
+  unlink(td)
+  unlink(tf)
+  
+}
+
+data_Date <- Sys.Date()
+
+US_CoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv")
+# 
+# save(US_CoronaVirus, file = "US_CoronaVirus.Rdata")
+
+US_StCoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv")
+
+save(US_StCoronaVirus, data_Date, US_CoronaVirus,  file = "US_StCoronaVirus.Rdata")
+
+if(!file.exists("US_StCoronaVirus.xlsx"))
+  
+  US_StCoronaVirus %>% 
+  openxlsx::write.xlsx("US_StCoronaVirus.xlsx"
+                       ,startCol = c(1), startRow = 1, asTable = c(TRUE)
+                       , withFilter = c(TRUE)
+                       , rowNames = FALSE
+                       , tableStyle = "TableStyleMedium2")
+
+```
+
+```{r getCountsOfILI, eval = FALSE}
+
+yrLinks <- "http://wp.sbcounty.gov/dph/wp-content/uploads/sites/7/" %>%
+  read_html() %>%
+  html_nodes("a") %>%
+  html_attr("href") %>%
+  .[grepl("20", .)] %>% 
+  paste0("http://wp.sbcounty.gov/dph/wp-content/uploads/sites/7/",.) 
+
+moLisnk_ <- list()
+
+for(i in seq(yrLinks)) {
+  
+  moLisnk_[[i]] <- yrLinks[i] %>%
+    read_html() %>%
+    html_nodes("a") %>%
+    html_attr("href") %>%
+    .[grepl("\\d{2}", .)] %>% 
+    paste0(yrLinks[i], .)
+  
+}
+
+moLisnk <- moLisnk_ %>%
+  flatten() %>% 
+  as.character()
+
+iliList_ <- list()
+
+for(i in seq(moLisnk)) {
+  
+  iliList_[[i]] <- moLisnk[i] %>%
+    read_html() %>%
+    html_nodes("a") %>%
+    html_attr("href") %>%
+    .[grepl("ili", ., ignore.case = TRUE)] %>% 
+    paste0(moLisnk[i], .)
+  
+}
+
+iliList <- iliList_ %>% 
+  flatten() %>% 
+  as.character() %>% 
+  .[grepl("Weekly",.)]
+
+wklyCnts_  <- list()
+
+startTime <- Sys.time() # start timer
+
+for (i in seq_along(iliList)) {
+  
+  timediff <- Sys.time() - startTime 
+  
+  print(paste0(
+    i,
+    " of "
+    ,   length(iliList)
+    ," -- ",as.double(timediff, units = "auto") %>% signif(.,3)
+    ," "
+    ,units(timediff)
+    ,
+    " -- ",
+    iliList[i]
+  ))
+  
+  url <- iliList[i]
+  
+  txt <- pdftools::pdf_text(url)
+  
+  tableLocation <- grep("Average Weekly Percentage|Percentage of ILI Emergency", txt)
+  
+  x <-txt %>% 
+    .[[tableLocation]]  %>% 
+    str_split("\n") %>% 
+    as.data.frame() %>% 
+    select(var = 1)
+  
+  row1 <- grep("MMWR|Average Weekly Percentage", x$var ) %>% min()
+  
+  lastrow <-   row1 + 8 #grep("Figure 1", x$var ) - 1
+  
+  if(FALSE) {
+    
+    lastrow <- if (length(lastrow) != 0 ) {
+      lastrow
+    } else if ( length(lastrow) == 0 & lastrow != row1) {
+      row1 + 8
+    }
+    
+    lastrow == row1
+  }
+  
+  x1 <- x %>%
+    slice(row1:lastrow) %>% 
+    mutate(var = sub("MMWR Week", "MMWR_Week", var),
+           var = gsub("\\s+", " ", var),
+           var = trimws(var)) 
+  
+  row1 <- grep("Week ", x1$var ) %>% min()
+  
+  wklyCnts_[[i]] <- x1 %>% 
+    slice(row1:nrow(x1)) %>% 
+    separate(var, c("Wk", "YrA", "YrB", "YrC")
+             , extra = "merge", sep = " ") %>% 
+    setNames( .[1,] %>% unlist() %>% as.character()) %>% 
+    setNames(gsub("[^[:alnum:]-]", perl = TRUE, "", names(.))) %>% 
+    mutate(file = sub(".*sites/\\d/\\d{4}/\\d{2}/(.*)" ,"\\1", url)) %>%
+    filter_at( vars(starts_with("20")), any_vars(grepl("%",. ))) %>%
+    rowid_to_column( var = "rowid") %>% 
+    pivot_longer(-c(1:2, file), names_to = "Yr", values_to = "Pcnt") %>% 
+    mutate(iteration = i)
+  
+}
+
+wklyCnts <- data.table::rbindlist(wklyCnts_, fill = TRUE)
+
+save(wklyCnts, file = "wklyCnts.RData")
+
+```
+
+```{r getCensusData, eval = FALSE}
+
+rm(list = ls()) #start with empty workspace
+
+# source('T:/Moises/DPSSTATS/LACo_BOS_increaseCFRate/functions.R')
+
+navToCensusSite  <- function(){
+  
+  library(RSelenium)
+  library(rvest)
+  library(XML)
+  
+  eCaps <- list(
+    chromeOptions = list(
+      args = c('--no-sandbox', '--disable-gpu', '--start-maximized','--disable-popup-blocking','--disable-extensions'),
+      prefs = list(
+        # "profile.default_content_settings.popups" = 0L,
+        # "profile.default_content_setting_values.automatic_downloads" = 1L,
+        # "download.prompt_for_download" = FALSE,
+        # "download.directory_upgrade" = TRUE,
+        # "safebrowsing.enabled" = TRUE,
+        # "safebrowsing.disable_download_protection" = TRUE,
+        "profile.default_content_settings.popups" = 0L,
+        "download.prompt_for_download" = FALSE,
+        "download.default_directory" = getwd() # paste0("C:/selenium",'/',gsub("-|:| ", "",Sys.Date()))
+      )
+    )
+  )
+  
+  chromeVers <- binman::list_versions("chromedriver") %>% 
+    unlist(., use.names = FALSE) %>% 
+    rev
+  
+  url <- "https://factfinder.census.gov/faces/nav/jsf/pages/download_center.xhtml#none"
+  
+  for (i in seq_along(chromeVers)) {
+    
+    try(rm(rD))
+    try(remDr$close())
+    try(rm(remDr))
+    gc()
+    
+    # error handling - skips to next URL if it gets an error
+    rD <- try(rsDriver(browser = "chrome"
+                       ,verbose = TRUE
+                       ,chromever = chromeVers[i] # "73.0.3683.68"
+                       ,extraCapabilities = eCaps))
+    
+    # if (class(rD)[1] == "try-error")
+    #   next
+    # Sys.sleep(1)
+    
+    remDr <- try(rD[["client"]])
+    
+    Sys.sleep(3) # give time for browser to get ready
+    
+    try(remDr$navigate(url))
+    
+    out <-  tryCatch(
+      remDr$getCurrentUrl() %>%
+        as.character(),
+      error = function(cond) {
+        message(paste("URL does not seem to exist:", url))
+        message("Here's the original error message:")
+        message(cond)
+        # Choose a return value in case of error
+        return("not it")
+      }
+    )
+    
+    if (out == url)
+      
+      break
+    
+  }
+  
+  webElems <- remDr$findElements("partial link text", "NEXT")
+  
+  remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+  remDr$click()
+  
+  Sys.sleep(2)
+  
+  assign('rD', rD, 1)
+  assign('remDr', remDr, 1)
+  assign('eCaps', eCaps, 1)
+  
+}
+
+navToCensusSite()
+
+# eCaps <- list(
+#   chromeOptions = list(
+#     args = c('--no-sandbox', '--disable-gpu', '--start-maximized','--disable-popup-blocking','--disable-extensions'),
+#     prefs = list(
+#       # "profile.default_content_settings.popups" = 0L,
+#       # "profile.default_content_setting_values.automatic_downloads" = 1L,
+#       # "download.prompt_for_download" = FALSE,
+#       # "download.directory_upgrade" = TRUE,
+#       # "safebrowsing.enabled" = TRUE,
+#       # "safebrowsing.disable_download_protection" = TRUE,
+#       "download.default_directory" = getwd() # paste0("C:/selenium",'/',gsub("-|:| ", "",Sys.Date()))
+#     )
+#   )
+# )
+# 
+# rD <- rsDriver(browser = "chrome"
+#                ,verbose = TRUE
+#                ,chromever = "73.0.3683.68"
+#                , extraCapabilities = eCaps)
+# 
+# remDr <- rD[["client"]]
+# 
+# url <- "https://factfinder.census.gov/faces/nav/jsf/pages/download_center.xhtml#none"
+# 
+# remDr$navigate(url)
+# 
+# webElems <- remDr$findElements("partial link text", "NEXT")
+# 
+# remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+# remDr$click()
+# 
+# Sys.sleep(2)
+
+# select from dropdown
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="filterDimensionListId"]')
+option$clickElement()
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="filterDimensionListId"]/option[2]')
+option$clickElement()
+
+Sys.sleep(2)
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="listDimensionListId"]')
+option$clickElement()
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="listDimensionListId"]/option[1]')
+option$clickElement()
+
+Sys.sleep(2)
+
+webElems <- remDr$findElements("partial link text", "ADD TO YOUR SELECTIONS")
+remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+remDr$click()
+
+Sys.sleep(2)
+
+webElems <- remDr$findElements("partial link text", "NEXT")
+remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+remDr$click()
+
+Sys.sleep(2)
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="summaryLevel"]')
+option$clickElement()
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="summaryLevel"]/option[14]')
+option$clickElement()
+
+Sys.sleep(2)
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="state"]')
+option$clickElement()
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="state"]/option[6]')
+option$clickElement()
+
+Sys.sleep(2)
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="geoAssistList"]')
+option$clickElement()
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="geoAssistList"]/option[1]')
+option$clickElement()
+
+Sys.sleep(2)
+
+webElems <- remDr$findElements("partial link text", "ADD TO YOUR SELECTIONS")
+
+remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+remDr$click()
+
+Sys.sleep(2)
+
+webElems <- remDr$findElements("partial link text", "NEXT")
+
+remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+remDr$click()
+
+Sys.sleep(2)
+
+# poverty S1703 or 1701 for 2017 yera
+# food stamps S2201
+
+# sort the page //*[@id="yui-dt4-th-p_product_code-liner"]
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S0101"]') # AGE AND SEX
+option$clickElement()
+
+# LIVING ARRANGEMENTS OF ADULTS 18 YEARS AND OVER BY AGE
+# B09021
+
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1101"]') # HOUSEHOLDS AND FAMILIES
+# option$clickElement()
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-dt0-th-p_product_code-liner"]') # sort results
+# option$clickElement()
+# 
+# Sys.sleep(2)
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-dt1-th-p_product_code-liner"]') # sort results again
+# option$clickElement()
+# 
+# Sys.sleep(2)
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-pg2-1-next-link"]/img') # navigate to next page
+# option$clickElement()
+# 
+# Sys.sleep(2)
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1701"]') # POVERTY STATUS IN THE PAST 12 MONTHS
+# option$clickElement()
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S2201"]') # FOOD STAMPS/Supplemental Nutrition Assistance Program (SNAP)
+# option$clickElement()
+# 
+# Sys.sleep(2)
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-pg3-0-rpp"]/option[3]') # view 75 rows per page
+# option$clickElement()
+# 
+# Sys.sleep(2)
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S2303"]')  # EMPLOYMENT CHARACTERISTICS OF FAMILIES
+# option$clickElement() 
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S2503"]') # FINANCIAL CHARACTERISTICS
+# option$clickElement()
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1401"]') # SCHOOL ENROLLMENT
+# option$clickElement()
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1501"]') # EDUCATIONAL ATTAINMENT
+# option$clickElement()
+# 
+# searchBox <-remDr$findElement(using = 'xpath'
+#                               ,value = '//*[@id="prodautocomplete"]')
+# searchBox$clearElement()
+# searchBox$sendKeysToElement(list("income", "\uE007"))
+# 
+# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_DP03"]') # SELECTED ECONOMIC CHARACTERISTICS
+# option$clickElement()
+
+# B02001 # RACE
+# B05001 # NATIVITY AND CITIZENSHIP STATUS IN THE UNITED STATES
+
+option <- remDr$findElement(using = 'xpath', '//*[@id="dnld_btn_below"]')
+option$clickElement()
+
+# interactively click ok
+# and save the zip file with the data in the working directory
+
+# webElems <- remDr$findElements(using = "tag name", "iframe")
+# # webElems <- remDr$findElements(value = "//frame") # using xpath
+# # webElems <- remDr$findElements("css", value = "frame") # using css
+# 
+# sapply(webElems, function(x){x$getElementAttribute("src")})
+# 
+# remDr$switchToFrame(webElems[[2]])
+# 
+# webElems <- remDr$findElements("partial link text", "DOWNLOAD")
+# remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+# remDr$click()
+
+webElems <- remDr$findElements(using = "tag name", "iframe")
+# webElems <- remDr$findElements(value = "//frame") # using xpath
+# webElems <- remDr$findElements("css", value = "frame") # using css
+
+sapply(webElems, function(x){x$getElementAttribute("src")})
+
+remDr$switchToFrame(webElems[[1]])
+XML::htmlParse(remDr$getPageSource()[[1]])
+
+webElems <- remDr$findElements("partial link text", "OK")
+webElems$highlightElement()
+remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
+remDr$click()
+
+
+
+webElem <- remDr$findElement(using = 'xpath',  '//*[@id="yui-gen0-button"]')
+# visually confirm element
+webElem$highlightElement()
+# click the button to bring up alert
+webElem$clickElement()
+
+
+remDr$close()
+rm(rD)
+gc()
+
+
+if(file.exists("cb_2018_us_county_500k.Rdata")) {
+  
+  print("file has been unziped already")
+  
+} else {
+  
+  ifelse(!dir.exists(file.path("./shapefiles")),
+         dir.create(file.path("./shapefiles")), FALSE)
+  
+  fname = unzip("aff_downloadCalifTract.zip",
+                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
+
+}
+
+# extract data for USA
+
+if(file.exists("US_Data.RData")) {
+  
+  print("file has been unziped already")
+  
+} else {
+  
+  ifelse(!dir.exists(file.path("./shapefiles")),
+         dir.create(file.path("./shapefiles")), FALSE)
+  
+  fname = unzip("aff_download_USA.zip",
+                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
+  
+  US_metaData <- fname %>% .[grepl("metadata",.)] %>% 
+    purrr::map_df( data.table::fread, stringsAsFactors = FALSE, .id = "file") %>% 
+    left_join( fname %>% .[grepl("metadata",.)] %>% 
+                 gsub("ACS_|_metadata\\.csv","",.) %>% 
+                 as.data.frame() %>% 
+                 rownames_to_column(var = "file") %>% 
+                 select(file, Name = 2))
+  
+  try(rm(stS1701))
+
+  datafiles <- fname %>%
+    .[grepl("with_ann", .)]
+  
+  for(i in seq_along(datafiles)) {
+    
+    x <- data.table::fread(datafiles[i], stringsAsFactors = FALSE)
+    
+    listOfAttr <- paste0(names(x), " = ",
+                         x[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character())
+    
+    x <- x %>% 
+      data.table::setattr(., "comment", listOfAttr)
+    
+    assign(datafiles[i] %>% sub(".*(\\D\\d+).*","\\1",.)
+           ,x)
+    
+  }
+  
+  save(B09021, S0101, US_metaData, file = "~/GitHub/covid19/US_Data.RData")
+  
+}
+
+# read census traact data
+
+
+if(file.exists("CA_Data.RData")) {
+  
+  print("file has been unziped already")
+  
+} else {
+  
+  ifelse(!dir.exists(file.path("./shapefiles")),
+         dir.create(file.path("./shapefiles")), FALSE)
+  
+  fname = unzip("aff_downloadCalifTract.zip",
+                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
+  
+  CA_metaData <- fname %>% .[grepl("metadata",.)] %>% 
+    purrr::map_df( data.table::fread, stringsAsFactors = FALSE, .id = "file") %>% 
+    left_join( fname %>% .[grepl("metadata",.)] %>% 
+                 gsub("ACS_|_metadata\\.csv","",.) %>% 
+                 as.data.frame() %>% 
+                 rownames_to_column(var = "file") %>% 
+                 select(file, Name = 2))
+  
+  
+  datafiles <- fname %>%
+    .[grepl("with_ann", .)]
+  
+  for(i in seq_along(datafiles)) {
+    
+    x <- data.table::fread(datafiles[i], stringsAsFactors = FALSE)
+    
+    listOfAttr <- paste0(names(x), " = ",
+                         x[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character())
+    
+    x <- x %>% 
+      data.table::setattr(., "comment", listOfAttr)
+    
+    assign(datafiles[i] %>% sub(".*(\\D\\d+).*","\\1",.)
+           ,x)
+    
+  }
+  
+  save(B09021, S0101, CA_metaData, file = "~/GitHub/covid19/CA_Data.RData")
+  
+}
+
+
+
+
+metaData <- dir(full.names = TRUE, recursive = TRUE) %>%
+  .[grepl("_metadata", .)] %>% 
+ # .[grepl("CalifTracts", .)] %>% 
+  .[!grepl("old",.)] %>% 
+  purrr::map_df( fread, stringsAsFactors = FALSE, .id = "file") %>% 
+  left_join(dir(full.names = TRUE, recursive = TRUE) %>%
+              .[grepl("_metadata", .)] %>% 
+              .[grepl("CalifTracts", .)] %>% 
+              .[!grepl("old",.)] %>% 
+              basename() %>% gsub("ACS_|_metadata\\.csv","",.) %>% 
+              as.data.frame() %>% 
+              rownames_to_column(var = "file") %>% 
+              select(file, Name = 2))
+
+metaData %>% 
+  data.table::fwrite(file = "./metaData_2017_5yr.txt",  sep = "\t")
+
+metaData %>% 
+  count(Name) %>% 
+  mutate(dataFile = gsub(".*_([A-z]{1,2}[0-9]{2,5}).*", "\\1", Name),
+         description = case_when(dataFile == "DP03" ~ "--SELECTED ECONOMIC CHARACTERISTICS",
+                                 dataFile == "S0601" ~ "--SELECTED CHARACTERISTICS OF THE TOTAL AND NATIVE POPULATIONS IN THE UNITED STATES",
+                                 dataFile == "S1101" ~ "--HOUSEHOLDS AND FAMILIES",
+                                 dataFile == "S1401" ~ "--SCHOOL ENROLLMENT",
+                                 dataFile == "S1501" ~ "--EDUCATIONAL ATTAINMENT",
+                                 dataFile == "S1701" ~ "POVERTY STATUS IN THE PAST 12 MONTHS",
+                                 dataFile == "S2201" ~ "FOOD STAMPS/Supplemental Nutrition Assistance Program",
+                                 dataFile == "S2303" ~ "--EMPLOYMENT CHARACTERISTICS OF FAMILIES",
+                                 dataFile == "S2503" ~ "--FINANCIAL CHARACTERISTICS"
+         )) %>% View("metadataDtls")
+
+View(metaData)
+
+try(rm(stS1701))
+
+stS1701 <- dir(full.names = TRUE, recursive = TRUE) %>%
+  .[grepl("with_ann", .)] %>% 
+  .[grepl("S1701", .)] %>% 
+  .[grepl("CalifTracts", .)] %>% 
+  .[!grepl("OLD", .)] %>% 
+  map_df( fread, stringsAsFactors = FALSE, .id = "file") %>% 
+  left_join(dir(full.names = TRUE, recursive = TRUE) %>%
+              .[grepl("with_ann", .)] %>% 
+              .[grepl("S1701", .)] %>% 
+              .[grepl("CalifTracts", .)] %>%
+              .[!grepl("OLD", .)] %>% 
+              basename() %>% gsub("ACS_|_with_ann\\.csv","",.) %>% 
+              as.data.frame() %>% 
+              rownames_to_column(var = "file") %>% 
+              select(file, Name = 2)) %>% 
+  select(GEO.id:`GEO.display-label`,Name
+         , HC01_EST_VC01:HC01_MOE_VC01,   #  HC01_EST_VC01 Total; Est; Population for whom poverty status is determined
+         HC01_EST_VC53:HC01_MOE_VC53) %>% # HC01_EST_VC53 Total; Estimate; ALL INDIVIDUALS WITH INCOME BELOW THE FOLLOWING POVERTY RATIOS - 125 percent of poverty level
+  filter(!grepl("--",`GEO.display-label`))
+
+listOfAttr <- paste0(names(stS1701), " = ",
+                     stS1701[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character())
+
+  %>% 
+  setattr(., "comment", listOfAttr)
+
+summary(stS1701)
+str(stS1701)
+attributes(stS1701)$comment
+
+```
+
+
+```{r analyzeData, eval=FALSE}
+
+rm(list = ls()) #start with empty workspace
+
+theme_set(theme_bw())
+
+# https://freakonometrics.hypotheses.org/60482
+
+load("cdc_estimates.RData")
+
+cdcInterpolated <- cdc_estimates %>% 
+  mutate(EndMonth = sub(".*April_(.*_\\d{2}).*", "\\1", link) %>% 
+           sub("_", " ",.) %>% 
+           sapply(., function(x)
+             case_when(
+               grepl("October|November|December", x, ignore.case = TRUE) ~ paste("2009", x),
+               TRUE ~  paste("2010", x)
+             )) %>% 
+           as.Date(., format = "%Y %B %d")) %>% 
+  # bind_rows( expand.grid(X2009H1N1 =  c("0-17 years", "18-64 years", "65 years and older","Total"),
+  #                        type = c("Cases", "Deaths", "Hospitalizations"),
+  #                        metric = c("highEst", "lowEst", "MidLevelRange"),
+  #                        Valuenum = 0,
+  #                        EndMonth = as.Date("2009-04-12"))
+  # ) %>% 
+  bind_rows( cdc_estimates %>% distinct(X2009H1N1 ,type, metric) %>% 
+               mutate(Valuenum = 0,
+                      EndMonth = as.Date("2009-04-12") )) %>% 
+  unite("Pop_type", X2009H1N1, type, remove = FALSE) %>% 
+  filter(X2009H1N1 != type) %>% 
+  select(-value) %>% 
+  pivot_wider(names_from = metric, values_from = Valuenum)
+
+
+# 
+# %>%
+#   bind_rows( expand.grid(X2009H1N1 = c("0-17 years", "18-64 years", "65 years and older"),
+#                          type = c("Cases", "Deaths", "Hospitalizations"),
+#                          metric = c("highEst", "lowEst", "MidLevelRange"),
+#                          Valuenum = 0,
+#                          EndMonth = seq(as.Date("2009-05-12") , to = as.Date("2009-09-12"), by = "month"))
+#              
+#   ) %>% 
+#   filter(!is.na(Valuenum)) %>% 
+#   select(-value) %>% 
+#   pivot_wider(names_from = metric, values_from = Valuenum) %>% # t %>%
+#   mutate(
+#     MidLevelRange = case_when(!between(
+#       EndMonth, as.Date("2009-05-12"), as.Date("2009-09-12")
+#     )
+#     ~ MidLevelRange),
+#     lowEst = case_when(!between(
+#       EndMonth, as.Date("2009-05-12"), as.Date("2009-09-12")
+#     )
+#     ~ lowEst),
+#     highEst = case_when(!between(
+#       EndMonth, as.Date("2009-05-12"), as.Date("2009-09-12")
+#     )
+#     ~ highEst)) %>% 
+#   unite("Pop_type", X2009H1N1, type, remove = FALSE) # %>% 
+# arrange(month, X2009H1N1) %>%
+# group_by(X2009H1N1, type) %>%
+# mutate(aprox_MidLevelRange = imputeTS::na_interpolation(MidLevelRange, option = "stine"))
+
+t %>% 
+  count( X2009H1N1, type, Pop_type )
+
+cols_estimate <- names(cdcInterpolated)[6:8]
+rows_estimate <- cdcInterpolated$Pop_type %>% unique # %>% .[!grepl("Total", .)]
+
+estData_ <- list()
+est_ <- list()
+
+startTime <- Sys.time() # start timer
+
+for (i in seq_along(rows_estimate)) {
+  
+  timediff <- Sys.time() - startTime
+  
+  tmp <- cdcInterpolated %>%
+    filter(Pop_type == rows_estimate[i]) %>% 
+    right_join( data.frame(EndMonth = seq(cdcInterpolated$EndMonth %>% min()
+                                          ,cdcInterpolated$EndMonth %>% max(),
+                                          by = "day"))
+    )
+  
+  for (j in seq_along(cols_estimate)) {
+    
+    tmp_ <- tmp %>%
+      select(EndMonth, cols_estimate[j]) %>%
+      arrange(EndMonth)
+    
+    x. <- tmp_ %>% select(1) %>% unlist
+    y. <- tmp_ %>% select(2) %>% unlist
+    
+    est_[[j]] <- splinefun(x., y., method = "hyman")   (x.) %>%
+      as.tibble() %>%
+      mutate(colEst = paste0("imp_", cols_estimate[j]),
+             SubIteration = j) %>%
+      bind_cols(EndMonth = x.) %>%
+      mutate(EndMonth = as.Date(EndMonth, origin = "1970-01-01"))
+    
+  }
+  estData_[[i]] <- est_ %>% # head(1000) %>% # "541/541 2.3 mins"
+    plyr::ldply(data.frame) %>%
+    mutate(Pop_type = rows_estimate[i],
+           Iteration = i)
+}
+
+t_intr_estm <- estData_ %>% # head(1000) %>% # "541/541 2.3 mins"
+  plyr::ldply(data.frame) %>%
+  select(-c(Iteration, SubIteration)) %>%
+  pivot_wider(names_from = colEst, values_from = value)
+
+rm(list = setdiff(ls(), c("t_intr_estm"
+                          ,"cdc_estimates",
+                          "cdcInterpolated")))
+
+
+t_intr_estm %>%
+  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+  ggplot +
+  geom_ribbon(aes(x = EndMonth,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst
+                  ,group = type
+                  ,fill = type)
+              ,alpha = .5) +
+  geom_line( aes(x = EndMonth, y = imp_MidLevelRange
+                 ,group = type
+                 ,color = type)
+  ) +
+  # geom_point( aes(x = EndMonth, y = imp_MidLevelRange
+  #                 ,group = type
+  #                 ,color = type),
+  #             size = .1)) +
+  scale_y_log10(label= scales::comma) +
+  facet_wrap(vars( X2009H1N1), scales = "free_y") +
+  theme(legend.position = "top")
+
+
+t_intr_estm %>%
+  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+  ggplot +
+  geom_ribbon(aes(x = EndMonth,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst
+                  ,group = type
+                  ,fill = type)
+              ,alpha = .5) +
+  geom_line( aes(x = EndMonth, y = imp_MidLevelRange
+                 ,group = type
+                 ,color = type)
+  ) +
+  # geom_point( aes(x = EndMonth, y = imp_MidLevelRange
+  #                 ,group = type
+  #                 ,color = type)
+  # ) +
+  scale_y_continuous(label= scales::comma) +
+  facet_wrap(vars( X2009H1N1), scales = "free_y") +
+  theme(legend.position = "top")
+
+
+t_intr_estm %>% 
+  #filter(!grepl("Total", X2009H1N1)) %>% 
+  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+  ggplot +
+  geom_ribbon(aes(x = EndMonth,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst
+                  ,group = type
+                  ,fill = type)
+              ,alpha = .5) +
+  geom_line( aes(x = EndMonth, y = imp_MidLevelRange
+                 ,group = type
+                 ,color = type)
+  ) +
+  geom_point( aes(x = EndMonth, y = imp_MidLevelRange
+                  ,group = type
+                  ,color = type)
+  ) +
+  scale_y_log10(label= scales::comma) +
+  facet_wrap(vars( X2009H1N1), scales = "free_y") +
+  theme(legend.position = "top")
+
+t_intr_estm %>% 
+  filter(Pop_type == "0-17 years_Cases") %>% 
+  left_join( cdcInterpolated %>% 
+               select(Pop_type, EndMonth:highEst)) %>% 
+  # separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+  arrange(Pop_type, EndMonth) %>% 
+  group_by(Pop_type ) %>% 
+  mutate(aprox_MidLevelRange = imputeTS::na_interpolation(MidLevelRange
+                                                          , option = "stine")) %>% 
+  ungroup() %>% 
+  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+  #filter(X2009H1N1 == "0-17 years", type == "Cases" ) %>% 
+  select(EndMonth, aprox_MidLevelRange ,imp_MidLevelRange) %>% 
+  pivot_longer(-EndMonth, names_to = "type" ) %>% 
+  ggplot +
+  # geom_ribbon(aes(x = EndMonth,
+  #                 ymin = aprox_lowEst,
+  #                 ymax = aprox_highEst
+  #                 ,group = type
+  #                 ,fill = type)
+  #,alpha = .5) +
+  geom_line( aes(x = EndMonth, y = value
+                 ,group = type
+                 ,color = type)
+  ) +
+  theme(legend.position = "top")
+
+load("US_CoronaVirus.Rdata")
+
+US_CoronaVirus %>% 
+  group_by(date) %>% 
+  summarise(totalDailyCases = sum(cases, rm.na = TRUE)) %>% 
+  ungroup %>% 
+  ggplot +
+  geom_line( aes(x = date, y = totalDailyCases
+                 ,group = 1
+                 #,color = type
+  )
+  )
+
+sum_US_CoronaVirus <- US_CoronaVirus %>% 
+  group_by(date) %>% 
+  summarise(totalDailyCases = sum(cases, rm.na = TRUE),
+            totalDeaths = sum(deaths, rm.na = TRUE)) %>% 
+  ungroup %>% 
+  mutate(dayCnt = 1,
+         dayCnt = cumsum(dayCnt))
+
+t_intr_estm <- t_intr_estm %>% 
+  left_join( data.frame(EndMonth = seq(t_intr_estm$EndMonth %>% min()
+                                       ,t_intr_estm$EndMonth %>% max(),
+                                       by = "day")) %>% 
+               mutate(dayCnt = 1,
+                      dayCnt = cumsum(dayCnt))
+  )
+
+### Total cases ####
+
+sum_US_CoronaVirus %>% 
+  ggplot +
+  geom_vline(xintercept = 83, linetype = "dotted", 
+             color = "blue", size = 2) +
+  geom_ribbon(data = t_intr_estm %>% 
+                filter(Pop_type == "Cases Total_Cases"),
+              aes(x = dayCnt,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst)
+              ,alpha = .5) +
+  geom_line(data = t_intr_estm %>% 
+              filter(Pop_type == "Cases Total_Cases"),
+            aes(x = dayCnt
+                ,y = imp_MidLevelRange),
+            colour = "blue") +
+  geom_line(aes(x = dayCnt
+                ,y = totalDailyCases),
+            colour = "red") +
+  scale_y_log10(label= scales::comma) +
+  coord_cartesian(xlim = c(1, 100), ylim = c(1, 2500000)) +
+  labs(title  = "2009 H1N1 cases vs Covid-19"
+       ,caption = "Note: y-axis is in logarithmic scale
+Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
+       https://www.cdc.gov/H1N1flu (H1N1)")
+
+
+sum_US_CoronaVirus %>% 
+  ggplot +
+  geom_vline(xintercept = 83, linetype = "dotted", 
+             color = "blue", size = 2) +
+  geom_ribbon(data = t_intr_estm %>% 
+                filter(Pop_type == "Cases Total_Cases"),
+              aes(x = dayCnt,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst)
+              ,alpha = .5) +
+  geom_line(data = t_intr_estm %>% 
+              filter(Pop_type == "Cases Total_Cases"),
+            aes(x = dayCnt
+                ,y = imp_MidLevelRange),
+            colour = "blue") +
+  geom_line(aes(x = dayCnt
+                ,y = totalDailyCases),
+            colour = "red") +
+  scale_y_continuous(label= scales::comma) +
+  coord_cartesian(xlim = c(1, 100), ylim = c(0, 2500000)) +
+  labs(title  = "2009 H1N1 cases vs Covid-19"
+       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
+       https://www.cdc.gov/H1N1flu (H1N1)")
+
+sum_US_CoronaVirus %>% 
+  ggplot +
+  geom_vline(xintercept = 83, linetype = "dotted", 
+             color = "blue", size = 2) +
+  geom_ribbon(data = t_intr_estm %>% 
+                filter(Pop_type == "Cases Total_Cases"),
+              aes(x = dayCnt,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst)
+              ,alpha = .5) +
+  geom_line(data = t_intr_estm %>% 
+              filter(Pop_type == "Cases Total_Cases"),
+            aes(x = dayCnt
+                ,y = imp_MidLevelRange),
+            colour = "blue") +
+  geom_line(aes(x = dayCnt
+                ,y = totalDailyCases),
+            colour = "red") +
+  scale_y_continuous(label= scales::comma) +
+  coord_cartesian(xlim = c(1, 300), ylim = c(0, 60000000)) +
+  labs(title  = "2009 H1N1 cases vs Covid-19"
+       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
+       https://www.cdc.gov/H1N1flu (H1N1)")
+
+### Total Deaths ####
+
+sum_US_CoronaVirus %>% 
+  ggplot +
+  geom_vline(xintercept = 83, linetype = "dotted", 
+             color = "blue", size = 2) +
+  geom_ribbon(data = t_intr_estm %>% 
+                filter(Pop_type == "Deaths Total_Deaths"),
+              aes(x = dayCnt,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst)
+              ,alpha = .5) +
+  geom_line(data = t_intr_estm %>% 
+              filter(Pop_type == "Deaths Total_Deaths"),
+            aes(x = dayCnt
+                ,y = imp_MidLevelRange),
+            colour = "blue") +
+  geom_line(aes(x = dayCnt
+                ,y = totalDeaths),
+            colour = "red") +
+  scale_y_log10(label= scales::comma) +
+  coord_cartesian(xlim = c(1, 100), ylim = c(1, 10000)) +
+  labs(title  = "2009 H1N1 deaths vs Covid-19"
+       ,caption = "Note: y-axis is in logarithmic scale
+Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
+       https://www.cdc.gov/H1N1flu (H1N1)")
+
+sum_US_CoronaVirus %>% 
+  ggplot +
+  geom_vline(xintercept = 83, linetype = "dotted", 
+             color = "blue", size = 2) +
+  geom_ribbon(data = t_intr_estm %>% 
+                filter(Pop_type == "Deaths Total_Deaths"),
+              aes(x = dayCnt,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst)
+              ,alpha = .5) +
+  geom_line(data = t_intr_estm %>% 
+              filter(Pop_type == "Deaths Total_Deaths"),
+            aes(x = dayCnt
+                ,y = imp_MidLevelRange),
+            colour = "blue") +
+  geom_line(aes(x = dayCnt
+                ,y = totalDeaths),
+            colour = "red") +
+  scale_y_continuous(label= scales::comma) +
+  coord_cartesian(xlim = c(1, 100), ylim = c(0, 10000)) +
+  labs(title  = "2009 H1N1 deaths vs Covid-19"
+       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
+       https://www.cdc.gov/H1N1flu (H1N1)")
+
+sum_US_CoronaVirus %>% 
+  ggplot +
+  geom_vline(xintercept = 83, linetype = "dotted", 
+             color = "blue", size = 2) +
+  geom_ribbon(data = t_intr_estm %>% 
+                filter(Pop_type == "Deaths Total_Deaths"),
+              aes(x = dayCnt,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst)
+              ,alpha = .5) +
+  geom_line(data = t_intr_estm %>% 
+              filter(Pop_type == "Deaths Total_Deaths"),
+            aes(x = dayCnt
+                ,y = imp_MidLevelRange),
+            colour = "blue") +
+  geom_line(aes(x = dayCnt
+                ,y = totalDeaths),
+            colour = "red") +
+  scale_y_continuous(label= scales::comma) +
+  coord_cartesian(xlim = c(1, 300), ylim = c(0, 50000)) +
+  labs(title  = "2009 H1N1 deaths vs Covid-19"
+       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
+       https://www.cdc.gov/H1N1flu (H1N1)")
+
+
+rm(list = ls()) #start with empty workspace
+
+load("wklyCnts.RData")
+
+wklyCnts_t <- wklyCnts %>% 
+  #filter(grepl("09.07.2018|Weekly-ILI-Report-2020.01.06.pdf", file)) %>% 
+  mutate(PcntNum = gsub("[^[:digit:]\\.]", "", Pcnt),
+         PcntNum = as.numeric(PcntNum)/100) %>% 
+  filter(PcntNum < 1) %>% 
+  mutate(test = scales::percent(PcntNum
+                                ,decimal.mark = "."),
+         dateFile =  gsub("[^[:digit:]]", " ", file),
+         dateFile = sub("\\s+?(\\d* \\d* \\d*)\\.?\\s+.*$", "\\1", dateFile),
+         dateFile = sub('(\\w+\\s+\\w+\\s+\\w+\\s+\\w+).*$', '\\1', dateFile),
+         dateFile = sub("(\\d{1,} \\d{1,} \\d{1,}).*", "\\1", dateFile),
+         dateFile = trimws(dateFile),
+         dateFile = case_when(grepl(".*\\d{4}$", dateFile) ~ as.Date(dateFile, format = "%m %d %Y"),
+                              grepl("^\\d{4}", dateFile) ~ as.Date(dateFile, format = "%Y %m %d"),
+                              TRUE ~ as.Date(dateFile, format = "%m %d %y")),
+         dateFile_Year_month = format(dateFile, "%Y-%m")) %>% 
+  separate(Week, c("begWeek", "endWeek"), "-", extra = "merge") %>%
+  separate(Yr, c("begYr", "endYr"), "-", extra = "merge", remove = FALSE) %>% 
+  distinct() %>% 
+  mutate(start = paste(Yr, begWeek) %>% as.Date(., format = "%Y %m/%d"),
+         end = paste(Yr, endWeek) %>% as.Date(., format = "%Y %m/%d"),
+         YearWeek = format(start, "%Y-%U"),
+         diff_days = difftime(start, end) %>% as.numeric(),
+         start_weekDay = format(start, "%a"),
+         Finalstart = case_when(is.na(YearWeek) & as.numeric(MMWRWeek) > 40 ~ paste(begYr, MMWRWeek, "7", sep = "-") %>%
+                                  as.Date(., format = "%Y-%U-%u"),
+                                is.na(YearWeek) & as.numeric(MMWRWeek) < 40 ~ paste(endYr, MMWRWeek, "7", sep = "-") %>%
+                                  as.Date(., format = "%y-%U-%u"),
+                                TRUE ~ start),
+         FinalstartWeek = format(Finalstart, "%Y-%U"),
+         final_MMWRWeek = case_when(is.na(MMWRWeek) ~
+                                      format(start, "%U") %>% as.numeric,
+                                    TRUE ~ as.numeric(MMWRWeek) )) #%>% select(-file)
+
+theme_set(theme_bw())
+
+wklyCnts_t  %>% 
+  ggplot() +
+  geom_line( aes(x = Finalstart, y = PcntNum, color = begYr),
+             alpha = .5) +
+  geom_point( aes(x = Finalstart, y = PcntNum, color = begYr),
+              alpha = .5) + 
+  # geom_text(aes(x = Finalstart, y = PcntNum, label = FinalstartWeek),
+  #           alpha = .2,
+  #           size = 5) +
+  theme(legend.position = "top")
+
+wklyCnts_t  %>% # some pcnts are dif eg week 2017-48 has more than one value reported
+  arrange(desc(iteration)) %>%
+  group_by(Finalstart, final_MMWRWeek) %>%
+  slice(1) %>%
+  ggplot() +
+  geom_line( aes(x = Finalstart, y = PcntNum
+                 #, color = begYr
+  ),
+  alpha = .5) +
+  geom_point( aes(x = Finalstart, y = PcntNum
+                  #, color = begYr
+  ),
+  alpha = .5) + 
+  scale_x_date( date_labels = "%Y-%U"
+                , breaks = '4 weeks') +
+  theme(legend.position = "top"
+        ,axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+
+
+
+
+# assign the MMWR week https://wwwn.cdc.gov/nndss/document/MMWR_Week_overview.pdf
+
+t <- seq(as.Date("2015-01-01")
+         , Sys.Date(), by = "day") %>% 
+  as.tibble() %>% 
+  mutate(YearWeek = format(value, "%Y-%U"),
+         YearMonth = format(value, "%Y-%m"),
+         Week = format(value, "%U") %>% as.numeric()) %>% 
+  group_by(YearWeek) %>% 
+  mutate(firstweek = min(value),
+         lastWeek = max(value)) %>% 
+  
+  fuzzy_left_join(
+    df1, df2,
+    by = c(
+      "category" = "category",
+      "date" = "start",
+      "date" = "end"
+    ),
+    match_fun = list(`==`, `>=`, `<=`)
+  )
+
+
+rm(list = ls()) #start with empty workspace
+
+load("hosp18.RData")
+
+load("cb_2018_us_county_500k.Rdata")
+
+califCounties <- cb_2018_us_county_500k %>% 
+  filter(STATEFP == "06") %>% 
+  st_transform(4269) 
+
+rm(cb_2018_us_county_500k)
+
+d <- hosp18 %>% filter(
+  # HEALTH_SVC_AREA == "12 - Inland Counties" & 
+  LIC_CAT == "General Acute Care Hospital") %>% 
+  select(FAC_NO, FAC_NAME, LONGITUDE, LATITUDE
+         , HEALTH_SVC_AREA, TOT_LIC_BEDS
+         , IC_LIC_BEDS) %>% 
+  distinct( LONGITUDE, LATITUDE , .keep_all = TRUE) %>% 
+  mutate_at(vars(LONGITUDE, LATITUDE),
+            list(~as.numeric(.))) #%>% 
+# st_as_sf( coords = c("LONGITUDE", "LONGITUDE"), crs = 4269 ) 
+
+library(deldir)
+
+# voronoi <- deldir(d$LONGITUDE, d$LATITUDE)
+
+voronoipolygons = function(layer) {
+  require(deldir)
+  crds = layer@coords
+  z = deldir(crds[,1], crds[,2])
+  w = tile.list(z)
+  polys = vector(mode='list', length=length(w))
+  require(sp)
+  for (i in seq(along=polys)) {
+    pcrds = cbind(w[[i]]$x, w[[i]]$y)
+    pcrds = rbind(pcrds, pcrds[1,])
+    polys[[i]] = Polygons(list(Polygon(pcrds)), ID=as.character(i))
+  }
+  SP = SpatialPolygons(polys)
+  voronoi = SpatialPolygonsDataFrame(SP
+                                     , data=data.frame(x=crds[,1], 
+                                                       y=crds[,2]
+                                                       , row.names=sapply(slot(SP
+                                                                               , 'polygons'), 
+                                                                          function(x) slot(x, 'ID'))))
+}
+
+voronoiPolygon <- voronoipolygons(sp::SpatialPoints(cbind(d$LONGITUDE,
+                                                          d$LATITUDE), 
+                                                    sp::CRS("+init=epsg:4269"))) %>% 
+  st_as_sf () %>% 
+  st_set_crs(4269) %>%
+  right_join(d, 
+             by = c("x" = "LONGITUDE"
+                    ,"y" = "LATITUDE")) %>% 
+  st_intersection(., st_union(califCounties)) %>% 
+  mutate(HospArea =  st_area(geometry))
+
+rm(list = setdiff(ls(), c("voronoiPolygon", "califCounties", 'hosp18')))
+gc()
+
+# voronoiPolygon %>% 
+#   ggplot() +
+#   geom_sf(aes(fill =  HEALTH_SVC_AREA )) +
+#   scale_fill_manual(values = c("#a6cee3","#1f78b4","#b2df8a","#33a02c"
+#                                ,"#fb9a99","#e31a1c","#fdbf6f","#ff7f00"
+#                                ,"#cab2d6","#6a3d9a","#ffff99","#b15928"
+#                                ,"#737373", "#d0d1e6"
+#   ))
+# 
+# voronoiPolygon %>%  
+#   filter(  HEALTH_SVC_AREA == "12 - Inland Counties") %>% 
+#   mutate(abbFAC_NAME = abbreviate(FAC_NAME)) %>% 
+#   ggplot() +
+#   geom_sf(aes(fill =  abbFAC_NAME )
+#           ,  show.legend = FALSE )
+
+load("cb_2018_06_tract_500.Rdata")
+
+# sf::st_crs(cb_2018_06_tract_500)
+# sf::st_crs(voronoiPolygon)
+# 
+int <- st_intersection(cb_2018_06_tract_500 %>%
+                         mutate(TractArea =  st_area(geometry))
+                       , voronoiPolygon) %>%
+  mutate(HospTractArea =  st_area(geometry))
+
+# Ashe = int[int$FAC_NO == "106331312",]
+# 
+# Vneigh <- voronoiPolygon %>% filter(lengths(st_touches(., Ashe)) > 0)
+# 
+# Vneigh %>% 
+#   ggplot() +
+#   geom_sf(aes(fill = FAC_NAME)) +
+#   geom_sf(data = Ashe,aes(fill = FAC_NAME))
+# 
+# 
+# Tneigh <- int %>% filter(lengths(st_touches(., Ashe)) > 0)
+# 
+# Tneigh %>% 
+#   ggplot() +
+#   geom_sf(aes(fill = FAC_NAME)) +
+#   geom_sf(data = Ashe, aes(fill = FAC_NAME))
+# 
+# Tneigh %>% 
+#   filter(NAME == "310.01") %>% 
+#   ggplot() +
+#   geom_sf(aes(fill = FAC_NAME))
+# 
+# plot(neigh$geometry)
+# plot(Ashe$geometry, col='red', add=T)
+# 
+# #add in an area count column to the tibble (area of each arable poly in intersect layer)
+# int$areaArable <- st_area(int$geometry)
+# 
+# plot (voronoiPolygon$geometry, col='green')
+# plot(cb_2018_06_tract_500$geometry, add=T)
+# plot(int$geometry, col='red', add=T)
+# 
+# #group data by county area and calculate the total arable land area per county
+# #output as new tibble
+# tb_ArableByCounty <- int %>%
+#   group_by(GEOID, NAME) %>%
+#   summarise(areaArable = sum(areaArable))
+# 
+# #change data type of areaArable field to numeric (from 'S3: units' with m^2 suffix)
+# tb_ArableByCounty$areaArable <- as.numeric(tb_ArableByCounty$areaArable)
+
+load("CA_Data.RData")
+
+sum_St <- int %>% 
+  select(GEOID, NAME, FAC_NO, FAC_NAME
+         , HospArea, TOT_LIC_BEDS, IC_LIC_BEDS
+         ,TractArea, HospTractArea) %>%
+  mutate(pcntArea = HospTractArea / TractArea,
+         IC_LIC_BEDS = as.numeric(IC_LIC_BEDS)) %>%  st_drop_geometry() %>% #View()
+  left_join( S0101 %>% 
+               select(GEOID = GEO.id2, HC01_EST_VC01, HC01_MOE_VC01) %>% 
+               mutate_at(vars( HC01_EST_VC01, HC01_MOE_VC01),
+                         list(~as.numeric(.))) %>% 
+               filter(!is.na(HC01_EST_VC01))
+  ) %>% 
+  mutate(tractPop = pcntArea*HC01_EST_VC01) %>% 
+  group_by(FAC_NO, FAC_NAME, TOT_LIC_BEDS, IC_LIC_BEDS) %>% 
+  summarise(popHosp = sum(tractPop)) %>% 
+  ungroup() %>% 
+  mutate(popHosp = as.numeric(popHosp),
+         TOT_LIC_BEDS = as.numeric(TOT_LIC_BEDS),
+         popOverTotLicBed = popHosp/TOT_LIC_BEDS
+         ,popOverTotLicIcBd = popHosp/IC_LIC_BEDS)
+
+sum_St %>%
+  left_join(int %>% 
+              select(GEOID , FAC_NO )) %>% 
+  st_as_sf () %>% 
+  ggplot() +
+  geom_sf(aes(fill =  popHosp)
+          , color = NA
+          #,  show.legend = FALSE
+  )
+
+
+
+```
