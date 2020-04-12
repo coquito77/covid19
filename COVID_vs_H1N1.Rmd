@@ -38,7 +38,7 @@ When you click the **Knit** button a document will be generated that includes bo
 
 ```{r getData, eval = FALSE}
 
-linkEstimates <- "https://www.cdc.gov/H1N1flu/" %>%
+linkEstimates <- "https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm/" %>%
   read_html() %>%
   html_nodes("a") %>%
   html_attr("href") %>%
@@ -51,7 +51,7 @@ linkEstimates <- "https://www.cdc.gov/H1N1flu/" %>%
   sapply(., function(x)
     case_when(
       grepl("h1n1flu", x, ignore.case = TRUE) ~ paste0("https://www.cdc.gov", x),
-      TRUE ~  paste0("https://www.cdc.gov/h1n1flu/", x)
+      TRUE ~  paste0("https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm/", x)
     )) %>%
   as.list() %>%
   as.character()
@@ -67,7 +67,7 @@ for (i in seq_along(linkEstimates)) {
   print(paste0(
     i,
     " of "
-    ,   length(linkEstimates)
+   ,    length(linkEstimates)
     ," -- ",as.double(timediff, units = "auto") %>% signif(.,3)
     ," "
     ,units(timediff)
@@ -89,7 +89,7 @@ for (i in seq_along(linkEstimates)) {
     separate(EstimatedRange, c("lowEst", "highEst"), "to", extra = "merge") %>% 
     filter(!is.na(type)) %>% 
     pivot_longer(-c(X2009H1N1,type)
-                 , names_to = "metric", values_to = "value") %>% 
+                ,  names_to = "metric", values_to = "value") %>% 
     mutate(Valuenum =  gsub("[^[:digit:].]", "", value),
            Valuenum = as.numeric(Valuenum),
            Valuenum  = case_when(grepl("million", value)  ~ Valuenum * 1e6,
@@ -137,7 +137,7 @@ hosp18 %>% names %>% View
 
 hosp18 %>% filter(HEALTH_SVC_AREA == "12 - Inland Counties" & LIC_CAT == "General Acute Care Hospital") %>% 
   select(FAC_NAME, LIC_CAT, TOT_LIC_BEDS
-         , IC_LIC_BEDS, ACUTE_RESPIRATORY_CARE_LIC_BEDS) %>%
+        ,  IC_LIC_BEDS, ACUTE_RESPIRATORY_CARE_LIC_BEDS) %>%
   mutate_at(vars( contains("BED"))
             ,list(~as.numeric(.))) %>% View()
 
@@ -158,7 +158,7 @@ if(file.exists("cb_2018_us_county_500k.Rdata")) {
   tf = tempfile(tmpdir = td, fileext = ".zip")
   # download into the placeholder file
   download.file("https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_county_500k.zip"
-                , tf)
+               ,  tf)
   
   # get the name of the first file in the zip archive
   fname = unzip(tf, exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
@@ -190,7 +190,7 @@ if(file.exists("cb_2018_us_county_500k.Rdata")) {
   tf = tempfile(tmpdir = td, fileext = ".zip")
   # download into the placeholder file
   download.file("https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_06_tract_500k.zip"
-                , tf)
+               ,  tf)
   
   # get the name of the first file in the zip archive
   fname = unzip(tf,
@@ -225,7 +225,7 @@ if(file.exists("cb_2018_us_county_500k.Rdata")) {
   tf = tempfile(tmpdir = td, fileext = ".zip")
   # download into the placeholder file
   download.file("https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_06_tract_500k.zip"
-                , tf)
+               ,  tf)
   
   # get the name of the first file in the zip archive
   fname = unzip(tf,
@@ -254,20 +254,20 @@ US_CoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/c
 
 US_StCoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv")
 
-save(US_StCoronaVirus, data_Date, US_CoronaVirus,  file = "US_StCoronaVirus.Rdata")
+save(US_StCoronaVirus, data_Date, US_CoronaVirus,  file = "US_CoronaVirus.Rdata")
 
 if(!file.exists("US_StCoronaVirus.xlsx"))
   
   US_StCoronaVirus %>% 
   openxlsx::write.xlsx("US_StCoronaVirus.xlsx"
                        ,startCol = c(1), startRow = 1, asTable = c(TRUE)
-                       , withFilter = c(TRUE)
-                       , rowNames = FALSE
-                       , tableStyle = "TableStyleMedium2")
+                      ,  withFilter = c(TRUE)
+                      ,  rowNames = FALSE
+                      ,  tableStyle = "TableStyleMedium2")
 
 ```
 
-```{r getCountsOfILI, eval = FALSE}
+```{r getILI_Cnts_SB_CO, eval = FALSE}
 
 yrLinks <- "http://wp.sbcounty.gov/dph/wp-content/uploads/sites/7/" %>%
   read_html() %>%
@@ -322,7 +322,7 @@ for (i in seq_along(iliList)) {
   print(paste0(
     i,
     " of "
-    ,   length(iliList)
+   ,    length(iliList)
     ," -- ",as.double(timediff, units = "auto") %>% signif(.,3)
     ," "
     ,units(timediff)
@@ -335,7 +335,7 @@ for (i in seq_along(iliList)) {
   
   txt <- pdftools::pdf_text(url)
   
-  tableLocation <- grep("Average Weekly Percentage|Percentage of ILI Emergency", txt)
+  tableLocation <- grep("Average Weekly Percentage|Percentage of ILI Emergency", txt) %>% min
   
   x <-txt %>% 
     .[[tableLocation]]  %>% 
@@ -369,7 +369,7 @@ for (i in seq_along(iliList)) {
   wklyCnts_[[i]] <- x1 %>% 
     slice(row1:nrow(x1)) %>% 
     separate(var, c("Wk", "YrA", "YrB", "YrC")
-             , extra = "merge", sep = " ") %>% 
+            ,  extra = "merge", sep = " ") %>% 
     setNames( .[1,] %>% unlist() %>% as.character()) %>% 
     setNames(gsub("[^[:alnum:]-]", perl = TRUE, "", names(.))) %>% 
     mutate(file = sub(".*sites/\\d/\\d{4}/\\d{2}/(.*)" ,"\\1", url)) %>%
@@ -495,7 +495,7 @@ navToCensusSite()
 # rD <- rsDriver(browser = "chrome"
 #                ,verbose = TRUE
 #                ,chromever = "73.0.3683.68"
-#                , extraCapabilities = eCaps)
+#               ,  extraCapabilities = eCaps)
 # 
 # remDr <- rD[["client"]]
 # 
@@ -849,7 +849,7 @@ stS1701 <- dir(full.names = TRUE, recursive = TRUE) %>%
               rownames_to_column(var = "file") %>% 
               select(file, Name = 2)) %>% 
   select(GEO.id:`GEO.display-label`,Name
-         , HC01_EST_VC01:HC01_MOE_VC01,   #  HC01_EST_VC01 Total; Est; Population for whom poverty status is determined
+        ,  HC01_EST_VC01:HC01_MOE_VC01,   #  HC01_EST_VC01 Total; Est; Population for whom poverty status is determined
          HC01_EST_VC53:HC01_MOE_VC53) %>% # HC01_EST_VC53 Total; Estimate; ALL INDIVIDUALS WITH INCOME BELOW THE FOLLOWING POVERTY RATIOS - 125 percent of poverty level
   filter(!grepl("--",`GEO.display-label`))
 
@@ -906,7 +906,7 @@ cdcInterpolated <- cdc_estimates %>%
 #                          type = c("Cases", "Deaths", "Hospitalizations"),
 #                          metric = c("highEst", "lowEst", "MidLevelRange"),
 #                          Valuenum = 0,
-#                          EndMonth = seq(as.Date("2009-05-12") , to = as.Date("2009-09-12"), by = "month"))
+#                          EndMonth = seq(as.Date("2009-05-12"),  to = as.Date("2009-09-12"), by = "month"))
 #              
 #   ) %>% 
 #   filter(!is.na(Valuenum)) %>% 
@@ -930,8 +930,8 @@ cdcInterpolated <- cdc_estimates %>%
 # group_by(X2009H1N1, type) %>%
 # mutate(aprox_MidLevelRange = imputeTS::na_interpolation(MidLevelRange, option = "stine"))
 
-t %>% 
-  count( X2009H1N1, type, Pop_type )
+# t %>% 
+#   count( X2009H1N1, type, Pop_type )
 
 cols_estimate <- names(cdcInterpolated)[6:8]
 rows_estimate <- cdcInterpolated$Pop_type %>% unique # %>% .[!grepl("Total", .)]
@@ -984,6 +984,49 @@ rm(list = setdiff(ls(), c("t_intr_estm"
                           ,"cdc_estimates",
                           "cdcInterpolated")))
 
+# creat pdf file with charts ####
+
+Cairo::CairoPDF(file = "2019H1N1_vs_COVID19.pdf",
+                #units = "in", dpi = 150,
+                width = 8, 
+                height = 11, 
+                pointsize = 10)
+
+if(FALSE) {
+  
+  t_intr_estm %>%
+    separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+    ggplot +
+    geom_ribbon(aes(x = EndMonth,
+                    ymin = imp_lowEst,
+                    ymax = imp_highEst
+                    ,group = type
+                    ,fill = type)
+                ,alpha = .5) +
+    geom_line( aes(x = EndMonth, y = imp_MidLevelRange
+                   ,group = type
+                   ,color = type)
+    ) +
+    geom_errorbar(data = cdcInterpolated %>%
+                    select(Pop_type#, type
+                           ,EndMonth
+                           ,MidLevelRange
+                           ,imp_lowEst = lowEst
+                           ,imp_highEst = highEst) %>% 
+                    separate(Pop_type, c("X2009H1N1", "type"), sep = "_")
+                  ,aes(ymin = imp_lowEst, ymax = imp_highEst
+                       ,x =EndMonth
+                       ,group = type), width=.2,
+                  position = position_dodge(.9)) +
+    # geom_point( aes(x = EndMonth, y = imp_MidLevelRange
+    #                 ,group = type
+    #                 ,color = type),
+    #             size = .1)) +
+    scale_y_log10(label= scales::comma) +
+    facet_wrap(vars( X2009H1N1), scales = "free_y") +
+    theme(legend.position = "top")
+  
+}
 
 t_intr_estm %>%
   separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
@@ -998,39 +1041,35 @@ t_intr_estm %>%
                  ,group = type
                  ,color = type)
   ) +
-  # geom_point( aes(x = EndMonth, y = imp_MidLevelRange
-  #                 ,group = type
-  #                 ,color = type),
-  #             size = .1)) +
-  scale_y_log10(label= scales::comma) +
-  facet_wrap(vars( X2009H1N1), scales = "free_y") +
-  theme(legend.position = "top")
-
-
-t_intr_estm %>%
-  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
-  ggplot +
-  geom_ribbon(aes(x = EndMonth,
-                  ymin = imp_lowEst,
-                  ymax = imp_highEst
-                  ,group = type
-                  ,fill = type)
-              ,alpha = .5) +
-  geom_line( aes(x = EndMonth, y = imp_MidLevelRange
-                 ,group = type
-                 ,color = type)
-  ) +
+  geom_errorbar(data = cdcInterpolated %>%
+                  select(Pop_type#, type
+                         ,EndMonth
+                         ,MidLevelRange
+                         ,imp_lowEst = lowEst
+                         ,imp_highEst = highEst) %>% 
+                  separate(Pop_type, c("X2009H1N1", "type"), sep = "_")
+                ,aes(ymin = imp_lowEst, ymax = imp_highEst
+                     ,x =EndMonth
+                     ,group = type), width=.2,
+                position = position_dodge(.9)) +
   # geom_point( aes(x = EndMonth, y = imp_MidLevelRange
   #                 ,group = type
   #                 ,color = type)
   # ) +
-  scale_y_continuous(label= scales::comma) +
+  scale_y_continuous(label = scales::comma) +
   facet_wrap(vars( X2009H1N1), scales = "free_y") +
-  theme(legend.position = "top")
+  theme(legend.position = "top") +
+  labs(title = "2009 H1N1 (swine flu pandemic) cases, deaths, and hospitalizations"
+       ,subtitle = "Interpolated counts from counts from Oct 2009 to March 2010"
+       ,y = "Estimated count"
+       ,x = ""
+       ,caption = paste("Source: https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)
+                        First case was reported on April 13, 2009 https://www.cdc.gov/mmwr/preview/mmwrhtml/mm5815a5.htm")
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
 
 
-t_intr_estm %>% 
-  #filter(!grepl("Total", X2009H1N1)) %>% 
+t_intr_estm %>%
   separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
   ggplot +
   geom_ribbon(aes(x = EndMonth,
@@ -1043,53 +1082,94 @@ t_intr_estm %>%
                  ,group = type
                  ,color = type)
   ) +
-  geom_point( aes(x = EndMonth, y = imp_MidLevelRange
-                  ,group = type
-                  ,color = type)
-  ) +
+  geom_errorbar(data = cdcInterpolated %>%
+                  select(Pop_type#, type
+                         ,EndMonth
+                         ,MidLevelRange
+                         ,imp_lowEst = lowEst
+                         ,imp_highEst = highEst) %>% 
+                  separate(Pop_type, c("X2009H1N1", "type"), sep = "_")
+                ,aes(ymin = imp_lowEst, ymax = imp_highEst
+                     ,x =EndMonth
+                     ,group = type), width=.2,
+                position = position_dodge(.9)) +
+  # geom_point( aes(x = EndMonth, y = imp_MidLevelRange
+  #                 ,group = type
+  #                 ,color = type)
+  # ) +
   scale_y_log10(label= scales::comma) +
   facet_wrap(vars( X2009H1N1), scales = "free_y") +
-  theme(legend.position = "top")
-
-t_intr_estm %>% 
-  filter(Pop_type == "0-17 years_Cases") %>% 
-  left_join( cdcInterpolated %>% 
-               select(Pop_type, EndMonth:highEst)) %>% 
-  # separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
-  arrange(Pop_type, EndMonth) %>% 
-  group_by(Pop_type ) %>% 
-  mutate(aprox_MidLevelRange = imputeTS::na_interpolation(MidLevelRange
-                                                          , option = "stine")) %>% 
-  ungroup() %>% 
-  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
-  #filter(X2009H1N1 == "0-17 years", type == "Cases" ) %>% 
-  select(EndMonth, aprox_MidLevelRange ,imp_MidLevelRange) %>% 
-  pivot_longer(-EndMonth, names_to = "type" ) %>% 
-  ggplot +
-  # geom_ribbon(aes(x = EndMonth,
-  #                 ymin = aprox_lowEst,
-  #                 ymax = aprox_highEst
-  #                 ,group = type
-  #                 ,fill = type)
-  #,alpha = .5) +
-  geom_line( aes(x = EndMonth, y = value
-                 ,group = type
-                 ,color = type)
+  theme(legend.position = "top") +
+  labs(title = "2009 H1N1 (swine flu pandemic) estimated cases, deaths, and hospitalizations"
+       ,subtitle = "Interpolated counts from counts from Oct 2009 to March 2010"
+       ,y = "Estimated count (log scale)"
+       ,x = ""
+       ,caption = paste("Source: https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)
+                        First case was reported on April 13, 2009 https://www.cdc.gov/mmwr/preview/mmwrhtml/mm5815a5.htm")
   ) +
-  theme(legend.position = "top")
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# t_intr_estm %>% 
+#   #filter(!grepl("Total", X2009H1N1)) %>% 
+#   separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+#   ggplot +
+#   geom_ribbon(aes(x = EndMonth,
+#                   ymin = imp_lowEst,
+#                   ymax = imp_highEst
+#                   ,group = type
+#                   ,fill = type)
+#               ,alpha = .5) +
+#   geom_line( aes(x = EndMonth, y = imp_MidLevelRange
+#                  ,group = type
+#                  ,color = type)
+#   ) +
+#   # geom_point( aes(x = EndMonth, y = imp_MidLevelRange
+#   #                 ,group = type
+#   #                 ,color = type)
+#   # ) +
+#   scale_y_log10(label= scales::comma) +
+#   facet_wrap(vars( X2009H1N1), scales = "free_y") +
+#   theme(legend.position = "top")
+
+# t_intr_estm %>% 
+#   filter(Pop_type == "0-17 years_Cases") %>% 
+#   left_join( cdcInterpolated %>% 
+#                select(Pop_type, EndMonth:highEst)) %>% 
+#   # separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+#   arrange(Pop_type, EndMonth) %>% 
+#   group_by(Pop_type ) %>% 
+#   mutate(aprox_MidLevelRange = imputeTS::na_interpolation(MidLevelRange
+#                                                          ,  option = "stine")) %>% 
+#   ungroup() %>% 
+#   separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+#   #filter(X2009H1N1 == "0-17 years", type == "Cases" ) %>% 
+#   select(EndMonth, aprox_MidLevelRange ,imp_MidLevelRange) %>% 
+#   pivot_longer(-EndMonth, names_to = "type" ) %>% 
+#   ggplot +
+#   # geom_ribbon(aes(x = EndMonth,
+#   #                 ymin = aprox_lowEst,
+#   #                 ymax = aprox_highEst
+#   #                 ,group = type
+#   #                 ,fill = type)
+#   #,alpha = .5) +
+#   geom_line( aes(x = EndMonth, y = value
+#                  ,group = type
+#                  ,color = type)
+#   ) +
+#   theme(legend.position = "top")
 
 load("US_CoronaVirus.Rdata")
 
-US_CoronaVirus %>% 
-  group_by(date) %>% 
-  summarise(totalDailyCases = sum(cases, rm.na = TRUE)) %>% 
-  ungroup %>% 
-  ggplot +
-  geom_line( aes(x = date, y = totalDailyCases
-                 ,group = 1
-                 #,color = type
-  )
-  )
+# US_CoronaVirus %>% 
+#   group_by(date) %>% 
+#   summarise(totalDailyCases = sum(cases, rm.na = TRUE)) %>% 
+#   ungroup %>% 
+#   ggplot +
+#   geom_line( aes(x = date, y = totalDailyCases
+#                  ,group = 1
+#                  #,color = type
+#   )
+#   )
 
 sum_US_CoronaVirus <- US_CoronaVirus %>% 
   group_by(date) %>% 
@@ -1099,6 +1179,7 @@ sum_US_CoronaVirus <- US_CoronaVirus %>%
   mutate(dayCnt = 1,
          dayCnt = cumsum(dayCnt))
 
+# crate column dayCnt to id both sets 
 t_intr_estm <- t_intr_estm %>% 
   left_join( data.frame(EndMonth = seq(t_intr_estm$EndMonth %>% min()
                                        ,t_intr_estm$EndMonth %>% max(),
@@ -1111,8 +1192,8 @@ t_intr_estm <- t_intr_estm %>%
 
 sum_US_CoronaVirus %>% 
   ggplot +
-  geom_vline(xintercept = 83, linetype = "dotted", 
-             color = "blue", size = 2) +
+  # geom_vline(xintercept = 83, linetype = "dotted", 
+  #            color = "blue", size = 2) +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Cases Total_Cases"),
               aes(x = dayCnt,
@@ -1129,16 +1210,21 @@ sum_US_CoronaVirus %>%
             colour = "red") +
   scale_y_log10(label= scales::comma) +
   coord_cartesian(xlim = c(1, 100), ylim = c(1, 2500000)) +
-  labs(title  = "2009 H1N1 cases vs Covid-19"
-       ,caption = "Note: y-axis is in logarithmic scale
-Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
-       https://www.cdc.gov/H1N1flu (H1N1)")
+  labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
+       ,subtitle = "100 days after the first case"
+       ,y = "Cases (log scale)"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
 
 
 sum_US_CoronaVirus %>% 
   ggplot +
-  geom_vline(xintercept = 83, linetype = "dotted", 
-             color = "blue", size = 2) +
+  # geom_vline(xintercept = 83, linetype = "dotted", 
+  #            color = "blue", size = 2) +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Cases Total_Cases"),
               aes(x = dayCnt,
@@ -1155,20 +1241,86 @@ sum_US_CoronaVirus %>%
             colour = "red") +
   scale_y_continuous(label= scales::comma) +
   coord_cartesian(xlim = c(1, 100), ylim = c(0, 2500000)) +
-  labs(title  = "2009 H1N1 cases vs Covid-19"
-       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
-       https://www.cdc.gov/H1N1flu (H1N1)")
+  labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
+       ,subtitle = "100 days after the first case"
+       ,y = "Cases"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
+
 
 sum_US_CoronaVirus %>% 
   ggplot +
-  geom_vline(xintercept = 83, linetype = "dotted", 
-             color = "blue", size = 2) +
+  # geom_vline(xintercept = 83, linetype = "dotted", 
+  #            color = "blue", size = 2) +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Cases Total_Cases"),
               aes(x = dayCnt,
                   ymin = imp_lowEst,
                   ymax = imp_highEst)
               ,alpha = .5) +
+  geom_errorbar(data = cdcInterpolated %>%
+                  filter(X2009H1N1 == "Cases Total") %>% 
+                  select(Pop_type#, type
+                         ,EndMonth
+                         ,MidLevelRange
+                         ,imp_lowEst = lowEst
+                         ,imp_highEst = highEst) %>% 
+                  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+                  inner_join(t_intr_estm %>% 
+                               select(EndMonth ,dayCnt))
+                ,aes(ymin = imp_lowEst, ymax = imp_highEst
+                     ,x =dayCnt
+                     ,group = type), width=.2,
+                position = position_dodge(.9)) +
+  geom_line(data = t_intr_estm %>% 
+              filter(Pop_type == "Cases Total_Cases"),
+            aes(x = dayCnt
+                ,y = imp_MidLevelRange),
+            colour = "blue") +
+  geom_line(aes(x = dayCnt
+                ,y = totalDailyCases),
+            colour = "red") +
+  scale_y_log10(label= scales::comma) +
+  #coord_cartesian(xlim = c(1, 300), ylim = c(0, 60000000)) +
+  labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
+       ,subtitle = "300+ days after the first case"
+       ,y = "Cases (log scales)"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
+sum_US_CoronaVirus %>% 
+  ggplot +
+  # geom_vline(xintercept = 83, linetype = "dotted", 
+  #            color = "blue", size = 2) +
+  geom_ribbon(data = t_intr_estm %>% 
+                filter(Pop_type == "Cases Total_Cases"),
+              aes(x = dayCnt,
+                  ymin = imp_lowEst,
+                  ymax = imp_highEst)
+              ,alpha = .5) +
+  geom_errorbar(data = cdcInterpolated %>%
+                  filter(X2009H1N1 == "Cases Total") %>% 
+                  select(Pop_type#, type
+                         ,EndMonth
+                         ,MidLevelRange
+                         ,imp_lowEst = lowEst
+                         ,imp_highEst = highEst) %>% 
+                  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+                  inner_join(t_intr_estm %>% 
+                               select(EndMonth ,dayCnt))
+                ,aes(ymin = imp_lowEst, ymax = imp_highEst
+                     ,x =dayCnt
+                     ,group = type), width=.2,
+                position = position_dodge(.9)) +
   geom_line(data = t_intr_estm %>% 
               filter(Pop_type == "Cases Total_Cases"),
             aes(x = dayCnt
@@ -1179,22 +1331,43 @@ sum_US_CoronaVirus %>%
             colour = "red") +
   scale_y_continuous(label= scales::comma) +
   coord_cartesian(xlim = c(1, 300), ylim = c(0, 60000000)) +
-  labs(title  = "2009 H1N1 cases vs Covid-19"
-       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
-       https://www.cdc.gov/H1N1flu (H1N1)")
+  labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
+       ,subtitle = "300 days after the first case"
+       ,y = "Cases"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
 
 ### Total Deaths ####
 
 sum_US_CoronaVirus %>% 
   ggplot +
-  geom_vline(xintercept = 83, linetype = "dotted", 
-             color = "blue", size = 2) +
+  # geom_vline(xintercept = 83, linetype = "dotted", 
+  #            color = "blue", size = 2) +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Deaths Total_Deaths"),
               aes(x = dayCnt,
                   ymin = imp_lowEst,
                   ymax = imp_highEst)
               ,alpha = .5) +
+  geom_errorbar(data = cdcInterpolated %>%
+                  filter(X2009H1N1 == "Deaths Total") %>% 
+                  select(Pop_type#, type
+                         ,EndMonth
+                         ,MidLevelRange
+                         ,imp_lowEst = lowEst
+                         ,imp_highEst = highEst) %>% 
+                  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+                  inner_join(t_intr_estm %>% 
+                               select(EndMonth ,dayCnt))
+                ,aes(ymin = imp_lowEst, ymax = imp_highEst
+                     ,x =dayCnt
+                     ,group = type), width=.2,
+                position = position_dodge(.9)) +
   geom_line(data = t_intr_estm %>% 
               filter(Pop_type == "Deaths Total_Deaths"),
             aes(x = dayCnt
@@ -1204,16 +1377,23 @@ sum_US_CoronaVirus %>%
                 ,y = totalDeaths),
             colour = "red") +
   scale_y_log10(label= scales::comma) +
-  coord_cartesian(xlim = c(1, 100), ylim = c(1, 10000)) +
-  labs(title  = "2009 H1N1 deaths vs Covid-19"
-       ,caption = "Note: y-axis is in logarithmic scale
-Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
-       https://www.cdc.gov/H1N1flu (H1N1)")
+  coord_cartesian(xlim = c(1, 100), ylim = c(1, 30000)) +
+  labs(title = "2009 H1N1 estimated deaths by day vs Covid-19 deaths"
+       ,subtitle = "100 days after the first case"
+       ,y = "Deaths (log scale)"
+       ,x = ""
+       ,caption = paste("Note: y-axis is in log scale
+Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+,data_Date
+,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
 
 sum_US_CoronaVirus %>% 
   ggplot +
-  geom_vline(xintercept = 83, linetype = "dotted", 
-             color = "blue", size = 2) +
+  # geom_vline(xintercept = 83, linetype = "dotted", 
+  #            color = "blue", size = 2) +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Deaths Total_Deaths"),
               aes(x = dayCnt,
@@ -1229,21 +1409,42 @@ sum_US_CoronaVirus %>%
                 ,y = totalDeaths),
             colour = "red") +
   scale_y_continuous(label= scales::comma) +
-  coord_cartesian(xlim = c(1, 100), ylim = c(0, 10000)) +
-  labs(title  = "2009 H1N1 deaths vs Covid-19"
-       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
-       https://www.cdc.gov/H1N1flu (H1N1)")
+  coord_cartesian(xlim = c(1, 100), ylim = c(0, 30000)) +
+  labs(title = "2009 H1N1 cumulative estimated deaths by day vs Covid-19"
+       ,subtitle = "100 days after the first case"
+       ,y = "Deaths"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
 
 sum_US_CoronaVirus %>% 
   ggplot +
-  geom_vline(xintercept = 83, linetype = "dotted", 
-             color = "blue", size = 2) +
+  # geom_vline(xintercept = 83, linetype = "dotted", 
+  #            color = "blue", size = 2) +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Deaths Total_Deaths"),
               aes(x = dayCnt,
                   ymin = imp_lowEst,
                   ymax = imp_highEst)
               ,alpha = .5) +
+  geom_errorbar(data = cdcInterpolated %>%
+                  filter(X2009H1N1 == "Deaths Total") %>% 
+                  select(Pop_type#, type
+                         ,EndMonth
+                         ,MidLevelRange
+                         ,imp_lowEst = lowEst
+                         ,imp_highEst = highEst) %>% 
+                  separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
+                  inner_join(t_intr_estm %>% 
+                               select(EndMonth ,dayCnt))
+                ,aes(ymin = imp_lowEst, ymax = imp_highEst
+                     ,x =dayCnt
+                     ,group = type), width=.2,
+                position = position_dodge(.9)) +
   geom_line(data = t_intr_estm %>% 
               filter(Pop_type == "Deaths Total_Deaths"),
             aes(x = dayCnt
@@ -1253,12 +1454,123 @@ sum_US_CoronaVirus %>%
                 ,y = totalDeaths),
             colour = "red") +
   scale_y_continuous(label= scales::comma) +
-  coord_cartesian(xlim = c(1, 300), ylim = c(0, 50000)) +
-  labs(title  = "2009 H1N1 deaths vs Covid-19"
-       ,caption = "Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed 2020-03-31 (Covid19);
-       https://www.cdc.gov/H1N1flu (H1N1)")
+  coord_cartesian(xlim = c(1, 300), ylim = c(0, 30000)) +
+  labs(title = "2009 H1N1 total estimated deaths vs Covid-19 deaths"
+       ,subtitle = "300+ days after the first case"
+       ,y = "Deaths"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
+coronaChange <- sum_US_CoronaVirus %>%
+  mutate(lagCases = lag(totalDailyCases),
+         lagDeaths = lag(totalDeaths),
+         NewCases = totalDailyCases - lagCases,
+         NewDeaths = totalDeaths - lagDeaths,
+         NewCases = case_when(is.na(NewCases) ~ totalDailyCases,
+                              TRUE ~ NewCases),
+         NewDeaths = case_when(is.na(NewDeaths) ~ totalDeaths,
+                               TRUE ~ NewDeaths),
+         lagNewCases = lag(NewCases),
+         lagNewDeaths = lag(NewDeaths),
+         changTypeCases = case_when(lagNewCases > NewCases ~ "Decreased",
+                                    lagNewCases < NewCases ~ "Increased",
+                                    lagNewCases == NewCases ~ "Unchanged",
+                                    TRUE ~ "Other"),
+         changTypeDeaths = case_when(lagNewDeaths > NewDeaths ~ "Decreased",
+                                     lagNewDeaths < NewDeaths ~ "Increased",
+                                     lagNewDeaths == NewDeaths ~ "Unchanged",
+                                     TRUE ~ "Other")) %>% 
+  select(dayCnt, NewCases, NewDeaths, changTypeCases, changTypeDeaths) %>% 
+  unite("cases", changTypeCases, NewCases, remove = TRUE) %>% 
+  unite("deaths", changTypeDeaths, NewDeaths, remove = TRUE) %>% 
+  gather(key = "type", value = "cnts", -dayCnt) %>% 
+  separate(cnts, c("changeType", "Cnt")) %>% 
+  mutate(Cnt = as.numeric(Cnt),
+         dataSet = "Coronavirus")
 
 
+H1N1Change <- t_intr_estm %>% 
+  select(dayCnt, Pop_type, imp_MidLevelRange) %>%
+  filter( grepl(" Total_", Pop_type)) %>% 
+  arrange(dayCnt) %>% 
+  group_by(Pop_type) %>%
+  mutate(lagimp_MidLevelRange = lag(imp_MidLevelRange),
+         newNumber = imp_MidLevelRange - lagimp_MidLevelRange,
+         lagNewNumber = lag(newNumber),
+         changTypeCases = case_when(lagNewNumber > newNumber ~ "Decreased",
+                                    lagNewNumber < newNumber ~ "Increased",
+                                    lagNewNumber == newNumber ~ "Unchanged",
+                                    TRUE ~ "Other"),
+         type = case_when(grepl("Cases", Pop_type) ~ "cases",
+                          grepl("Deaths", Pop_type) ~ "deaths",
+                          grepl("Hospitalizations", Pop_type) ~ "hospitalizations"),
+         dataSet = "H1N1"
+  ) %>%
+  ungroup() %>% 
+  select(dayCnt, Cnt = newNumber
+        ,  changeType = changTypeCases, type, dataSet) # %>% View
+
+coronaChange %>% 
+  bind_rows(H1N1Change) %>% 
+  filter(type == "cases") %>% 
+  mutate(changeType = fct_relevel(changeType, "Other", after = Inf) 
+  ) %>% 
+  ggplot() +
+  geom_col(aes(x = dayCnt,  y = Cnt,
+               fill = changeType)) +
+  scale_y_continuous(label= scales::comma) +
+  scale_fill_brewer(name = "Change Type"
+                    ,palette = "Set1"
+                    ,direction = -1) +
+  facet_wrap(~dataSet,
+             ncol = 1
+             ,scales = "free_y") +
+  coord_cartesian(xlim = c(1, 336) #, ylim = c(0, 50000)
+  ) +
+  labs(title = "2009 H1N1 new cases by day vs Covid-19 deaths"
+       ,subtitle = "336 days after the first case"
+       ,y = "Cases"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
+coronaChange %>% 
+  bind_rows(H1N1Change) %>% 
+  filter(type == "deaths") %>% 
+  mutate(changeType = fct_relevel(changeType, "Other", after = Inf) 
+  ) %>% 
+  ggplot() +
+  geom_col(aes(x = dayCnt,  y = Cnt,
+               fill = changeType)) +
+  scale_y_continuous(label= scales::comma) +
+  scale_fill_brewer(name = "Change Type"
+                    ,palette = "Set1"
+                    ,direction = -1) +
+  facet_wrap(~dataSet,
+             ncol = 1
+             ,scales = "free_y") +
+  coord_cartesian(xlim = c(1, 336) #, ylim = c(0, 50000)
+  ) +
+  labs(title = "2009 H1N1 new deaths by day vs Covid-19 deaths"
+       ,subtitle = "336 days after the first case"
+       ,y = "New deaths"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19);
+       https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
+  )
+
+
+if(FAlSE) {
+  
 rm(list = ls()) #start with empty workspace
 
 load("wklyCnts.RData")
@@ -1324,7 +1636,7 @@ wklyCnts_t  %>% # some pcnts are dif eg week 2017-48 has more than one value rep
   ),
   alpha = .5) + 
   scale_x_date( date_labels = "%Y-%U"
-                , breaks = '4 weeks') +
+               ,  breaks = '4 weeks') +
   theme(legend.position = "top"
         ,axis.text.x = element_text(angle = 90, hjust = 1))
 
@@ -1337,7 +1649,7 @@ wklyCnts_t  %>% # some pcnts are dif eg week 2017-48 has more than one value rep
 # assign the MMWR week https://wwwn.cdc.gov/nndss/document/MMWR_Week_overview.pdf
 
 t <- seq(as.Date("2015-01-01")
-         , Sys.Date(), by = "day") %>% 
+        ,  Sys.Date(), by = "day") %>% 
   as.tibble() %>% 
   mutate(YearWeek = format(value, "%Y-%U"),
          YearMonth = format(value, "%Y-%m"),
@@ -1356,6 +1668,8 @@ t <- seq(as.Date("2015-01-01")
     match_fun = list(`==`, `>=`, `<=`)
   )
 
+}
+
 
 rm(list = ls()) #start with empty workspace
 
@@ -1373,9 +1687,9 @@ d <- hosp18 %>% filter(
   # HEALTH_SVC_AREA == "12 - Inland Counties" & 
   LIC_CAT == "General Acute Care Hospital") %>% 
   select(FAC_NO, FAC_NAME, LONGITUDE, LATITUDE
-         , HEALTH_SVC_AREA, TOT_LIC_BEDS
-         , IC_LIC_BEDS) %>% 
-  distinct( LONGITUDE, LATITUDE , .keep_all = TRUE) %>% 
+        ,  HEALTH_SVC_AREA, TOT_LIC_BEDS
+        ,  IC_LIC_BEDS) %>% 
+  distinct( LONGITUDE, LATITUDE,  .keep_all = TRUE) %>% 
   mutate_at(vars(LONGITUDE, LATITUDE),
             list(~as.numeric(.))) #%>% 
 # st_as_sf( coords = c("LONGITUDE", "LONGITUDE"), crs = 4269 ) 
@@ -1398,10 +1712,10 @@ voronoipolygons = function(layer) {
   }
   SP = SpatialPolygons(polys)
   voronoi = SpatialPolygonsDataFrame(SP
-                                     , data=data.frame(x=crds[,1], 
+                                    ,  data=data.frame(x=crds[,1], 
                                                        y=crds[,2]
-                                                       , row.names=sapply(slot(SP
-                                                                               , 'polygons'), 
+                                                      ,  row.names=sapply(slot(SP
+                                                                              ,  'polygons'), 
                                                                           function(x) slot(x, 'ID'))))
 }
 
@@ -1421,7 +1735,7 @@ gc()
 
 # voronoiPolygon %>% 
 #   ggplot() +
-#   geom_sf(aes(fill =  HEALTH_SVC_AREA )) +
+#   geom_sf(aes(fill = HEALTH_SVC_AREA )) +
 #   scale_fill_manual(values = c("#a6cee3","#1f78b4","#b2df8a","#33a02c"
 #                                ,"#fb9a99","#e31a1c","#fdbf6f","#ff7f00"
 #                                ,"#cab2d6","#6a3d9a","#ffff99","#b15928"
@@ -1432,8 +1746,8 @@ gc()
 #   filter(  HEALTH_SVC_AREA == "12 - Inland Counties") %>% 
 #   mutate(abbFAC_NAME = abbreviate(FAC_NAME)) %>% 
 #   ggplot() +
-#   geom_sf(aes(fill =  abbFAC_NAME )
-#           ,  show.legend = FALSE )
+#   geom_sf(aes(fill = abbFAC_NAME )
+#          ,   show.legend = FALSE )
 
 load("cb_2018_06_tract_500.Rdata")
 
@@ -1442,7 +1756,7 @@ load("cb_2018_06_tract_500.Rdata")
 # 
 int <- st_intersection(cb_2018_06_tract_500 %>%
                          mutate(TractArea =  st_area(geometry))
-                       , voronoiPolygon) %>%
+                      ,  voronoiPolygon) %>%
   mutate(HospTractArea =  st_area(geometry))
 
 # Ashe = int[int$FAC_NO == "106331312",]
@@ -1490,7 +1804,7 @@ load("CA_Data.RData")
 
 sum_St <- int %>% 
   select(GEOID, NAME, FAC_NO, FAC_NAME
-         , HospArea, TOT_LIC_BEDS, IC_LIC_BEDS
+        ,  HospArea, TOT_LIC_BEDS, IC_LIC_BEDS
          ,TractArea, HospTractArea) %>%
   mutate(pcntArea = HospTractArea / TractArea,
          IC_LIC_BEDS = as.numeric(IC_LIC_BEDS)) %>%  st_drop_geometry() %>% #View()
@@ -1506,19 +1820,93 @@ sum_St <- int %>%
   ungroup() %>% 
   mutate(popHosp = as.numeric(popHosp),
          TOT_LIC_BEDS = as.numeric(TOT_LIC_BEDS),
-         popOverTotLicBed = popHosp/TOT_LIC_BEDS
-         ,popOverTotLicIcBd = popHosp/IC_LIC_BEDS)
+         TotLicBed_over_pop = TOT_LIC_BEDS/popHosp
+         ,TotLicIcBd_over_pop = IC_LIC_BEDS/popHosp)
 
 sum_St %>%
   left_join(int %>% 
-              select(GEOID , FAC_NO )) %>% 
+              select(GEOID, FAC_NO)) %>% 
   st_as_sf () %>% 
   ggplot() +
-  geom_sf(aes(fill =  popHosp)
-          , color = NA
+  geom_sf(aes(fill = popHosp)
+          ,  color = NA
           #,  show.legend = FALSE
-  )
+  ) +
+  geom_sf(data = califCounties
+          ,aes(fill = NA)
+          ,color = "black"
+          ,alpha = 0
+          ,size = .10) +
+  scale_fill_viridis_c(trans = "sqrt", alpha = .7) 
 
 
+sum_St %>%
+  left_join(int %>% 
+              select(GEOID, FAC_NO)) %>% 
+  st_as_sf () %>% 
+  ggplot() +
+  geom_sf(aes(fill = TOT_LIC_BEDS)
+         ,  color = NA
+          #,  show.legend = FALSE
+  ) +
+  geom_sf(data = califCounties
+          ,aes(fill = NA)
+          ,color = "black"
+          ,alpha = 0
+          ,size = .10) +
+  scale_fill_viridis_c(trans = "sqrt", alpha = .7) 
+
+sum_St %>%
+  left_join(int %>% 
+              select(GEOID, FAC_NO)) %>% 
+  st_as_sf () %>% 
+  ggplot() +
+  geom_sf(aes(fill = IC_LIC_BEDS)
+          ,  color = NA
+          #,  show.legend = FALSE
+  ) +
+  geom_sf(data = califCounties
+          ,aes(fill = NA)
+          ,color = "black"
+          ,alpha = 0
+          ,size = .10) +
+  scale_fill_viridis_c(trans = "sqrt", alpha = .7) 
+
+sum_St %>%
+  left_join(int %>% 
+              select(GEOID, FAC_NO)) %>% 
+  st_as_sf () %>% 
+  ggplot() +
+  geom_sf(aes(fill = TotLicBed_over_pop)
+          ,  color = NA
+          #,  show.legend = FALSE
+  ) +
+  geom_sf(data = califCounties
+          ,aes(fill = NA)
+          ,color = "black"
+          ,alpha = 0
+          ,size = .10) +
+  scale_fill_viridis_c(trans = "sqrt", alpha = .7) 
+
+
+sum_St %>%
+  left_join(int %>% 
+              select(GEOID, FAC_NO)) %>% 
+  st_as_sf () %>% 
+  ggplot() +
+  geom_sf(aes(fill = TotLicIcBd_over_pop)
+          ,  color = NA
+          #,  show.legend = FALSE
+  ) +
+  geom_sf(data = califCounties
+          ,aes(fill = NA)
+          ,color = "black"
+          ,alpha = 0
+          ,size = .10) +
+  scale_fill_viridis_c(trans = "sqrt", alpha = .7) 
+
+dev.off()
+
+system(paste0('open "', '2019H1N1_vs_COVID19.pdf', '"'))
 
 ```
