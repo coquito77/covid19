@@ -254,39 +254,6 @@ labelsBreaksRate <- combo %>%
   # .[.<200] %>% #order()
   BAMMtools::getJenksBreaks(., k = 6, subset = NULL)
 
-age.cat <- function(x, lower = 0, upper, #by = 10,
-                    sep = "-", above.char = "+") {
-  
-  c(paste(seq(lower, upper - by, by = by),
-          seq(lower + by - 1, upper - 1, by = by),
-          sep = sep),
-    paste(upper, above.char, sep = ""))
-  
-}
-
-
-age.cat <- function(x, lower = 0, upper, by = 10,
-                    sep = "-", above.char = "+") {
-  
-  labs <- c(paste(seq(lower, upper - by, by = by),
-                  seq(lower + by - 1, upper - 1, by = by),
-                  sep = sep),
-            paste(upper, above.char, sep = ""))
-  
-  cut(floor(x), breaks = BAMMtools::getJenksBreaks(x, k = 6, subset = NULL),
-      right = FALSE, labels = labs)
-}
-
-
-
-# %>% 
-#   .[, HC04_EST_VC25_Grps := cut(HC04_EST_VC25,
-#                                 # breaks = jenksBreaks$brks, 
-#                                 breaks = BAMMtools::getJenksBreaks(.$HC04_EST_VC25, 6, subset = NULL),
-#                                 include.lowest = TRUE)] %>% 
-#   setattr(., "comment", listOfAttr) # %>%   setattr(., "comment2", listOfAttr2) 
-
-
 matchedCommunities <- combo %>%
   st_drop_geometry(.) %>% 
   group_by(matchType) %>% 
