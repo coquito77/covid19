@@ -1166,9 +1166,9 @@ Source: https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)
                         First case was reported on April 13, 2009 https://www.cdc.gov/mmwr/preview/mmwrhtml/mm5815a5.htm")
   ) +
   annotation_logticks(sides = "l",
-                      short = unit(0,"mm"),
-                      mid = unit(1,"mm"),
-                      long = unit(2,"mm"),
+                      short = unit(1,"mm"),
+                      mid = unit(3,"mm"),
+                      long = unit(5,"mm"),
                       size = 0.2, linetype = 1
                       , alpha = .8)
 
@@ -1225,9 +1225,9 @@ sum_US_CoronaVirus %>%
   coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+50)
                   , ylim = c(1, max(H1N1_Case_currentDay$imp_highEst))) +
   annotation_logticks(sides = "l",
-                      short = unit(0,"mm"),
-                      mid = unit(1,"mm"),
-                      long = unit(2,"mm"),
+                      short = unit(1,"mm"),
+                      mid = unit(3,"mm"),
+                      long = unit(5,"mm"),
                       size = 0.2, linetype = 1
                       , alpha = .8) +
   labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
@@ -1372,9 +1372,9 @@ sum_US_CoronaVirus %>%
   coord_cartesian(xlim = c(1, t_intr_estm$dayCnt+50)
                   , ylim = c(1, H1N1_Case_Max$imp_highEst)) +
   annotation_logticks(sides = "l",
-                      short = unit(0,"mm"),
-                      mid = unit(1,"mm"),
-                      long = unit(2,"mm"),
+                      short = unit(1,"mm"),
+                      mid = unit(3,"mm"),
+                      long = unit(5,"mm"),
                       size = 0.2, linetype = 1
                       , alpha = .8) +
   labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
@@ -1539,9 +1539,9 @@ sum_US_CoronaVirus %>%
   coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+50)
                   , ylim = c(1, Cov_currentDay$totalDeaths)) +
   annotation_logticks(sides = "l",
-                      short = unit(0,"mm"),
-                      mid = unit(1,"mm"),
-                      long = unit(2,"mm"),
+                      short = unit(1,"mm"),
+                      mid = unit(3,"mm"),
+                      long = unit(5,"mm"),
                       size = 0.2, linetype = 1
                       , alpha = .8) +
   labs(title = "2009 H1N1 estimated deaths by day vs Covid-19 deaths"
@@ -1625,9 +1625,9 @@ sum_US_CoronaVirus %>%
   coord_cartesian(xlim = c(1, H1N1_Death_Max$dayCnt+50)
                   , ylim = c(1, Cov_currentDay$totalDeaths)) +
   annotation_logticks(sides = "l",
-                      short = unit(0,"mm"),
-                      mid = unit(1,"mm"),
-                      long = unit(2,"mm"),
+                      short = unit(1,"mm"),
+                      mid = unit(3,"mm"),
+                      long = unit(5,"mm"),
                       size = 0.2, linetype = 1
                       , alpha = .8) +
   labs(title = "2009 H1N1 estimated deaths by day vs Covid-19 deaths"
