@@ -5,7 +5,9 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, include = FALSE,
+                      #dpi = 500
+                      dev = "cairo_pdf")
 
 library(tidyverse)
 library(xml2)
@@ -246,15 +248,15 @@ if(file.exists("cb_2018_us_county_500k.Rdata")) {
   
 }
 
-data_Date <- Sys.Date()
-
-US_CoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv")
+# data_Date <- Sys.Date()
 # 
-# save(US_CoronaVirus, file = "US_CoronaVirus.Rdata")
-
-US_StCoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv")
-
-save(US_StCoronaVirus, data_Date, US_CoronaVirus, file = "US_CoronaVirus.Rdata")
+# US_CoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv")
+# # 
+# # save(US_CoronaVirus, file = "US_CoronaVirus.Rdata")
+# 
+# US_StCoronaVirus <- data.table::fread("https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv")
+# 
+# save(US_StCoronaVirus, data_Date, US_CoronaVirus, file = "US_CoronaVirus.Rdata")
 
 if(!file.exists("US_StCoronaVirus.xlsx"))
   
@@ -885,9 +887,7 @@ stS1701 <- dir(full.names = TRUE, recursive = TRUE) %>%
   filter(!grepl("--",`GEO.display-label`))
 
 listOfAttr <- paste0(names(stS1701), " = ",
-                     stS1701[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character())
-
-  %>% 
+                     stS1701[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character()) %>% 
   setattr(., "comment", listOfAttr)
 
 summary(stS1701)
@@ -977,7 +977,7 @@ rm(list = setdiff(ls(), c("t_intr_estm"
 
 source("helperFunctions.r")
 
-load("US_CoronaVirus.Rdata")
+source('~/GitHub/covid19/covid19DataNYTimes.R')
 
 cols <- c("Cases" = "#d8b365", "Deaths" = "#998ec3", "Hospitalizations" = "#5ab4ac")
 
