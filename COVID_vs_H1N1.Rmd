@@ -13,12 +13,14 @@ library(tidyverse)
 library(xml2)
 library(rvest)
 library(sf)
-
+library(lubridate)
+library(data.table)
+library(tidycensus)
 #setwd("")
 
 options(scipen = 999)
 
-rm(list = ls()) #start with empty workspace
+rm(list = ls()) #start with empty workplace
 
 ```
 
@@ -419,487 +421,53 @@ save(wklyCnts, file = "wklyCnts.RData")
 
 ```
 
-```{r getCensusData, eval = FALSE}
+```{r analyzeData, eval = FALSE}
 
 rm(list = ls()) #start with empty workspace
 
-# source('T:/Moises/DPSSTATS/LACo_BOS_increaseCFRate/functions.R')
+# unlink("counties_2018acs.rds")
 
-navToCensusSite  <- function(){
+if( !file.exists("counties_2018acs.rds") ) {
   
-  library(RSelenium)
-  library(rvest)
-  library(XML)
+  census_api_key(Sys.getenv("census_api_key")
+                 #,install = TRUE
+  )
   
-  eCaps <- list(
-    chromeOptions = list(
-      args = c('--no-sandbox', '--disable-gpu', '--start-maximized','--disable-popup-blocking','--disable-extensions'),
-      prefs = list(
-        # "profile.default_content_settings.popups" = 0L,
-        # "profile.default_content_setting_values.automatic_downloads" = 1L,
-        # "download.prompt_for_download" = FALSE,
-        # "download.directory_upgrade" = TRUE,
-        # "safebrowsing.enabled" = TRUE,
-        # "safebrowsing.disable_download_protection" = TRUE,
-        "profile.default_content_settings.popups" = 0L,
-        "download.prompt_for_download" = FALSE,
-        "download.default_directory" = getwd() # paste0("C:/selenium",'/',gsub("-|:| ", "",Sys.Date()))
-      )
+  v18 <- load_variables(2018, "acs5", cache = TRUE)
+  
+  my_vars <- c(
+    total_pop = "B01003_001",
+    median_income = "B19013_001",
+    Othr_Relatives_LIVI_ARRA_OF_ADUL_65_yers_and_over = "B09021_027",
+    Othr_nonRelatives_LIVI_ARRA_OF_ADUL_65_yers_and_over = "B09021_028",
+    Pctn_Publictrans_to_work = "DP03_0021P",
+    Pctn_Service_occupations = "DP03_0028P",
+    Per_capita_income = "DP03_0088",
+    Pctn_Health_insurance = "DP03_0096P",
+    Pctn_Below_FP_All_people = "DP03_0128P"
+  )
+  
+  counties_2018acs <- map_dfr(
+    #my_states,
+    state.abb,
+    ~ get_acs(
+      geography = "county",
+      variables = my_vars,
+      state = .,
+      year = 2018,
+      survey = "acs5", # 2014-2018 5-year ACS
+      geometry = FALSE
     )
   )
   
-  chromeVers <- binman::list_versions("chromedriver") %>% 
-    unlist(., use.names = FALSE) %>% 
-    rev
+  saveRDS(counties_2018acs, "counties_2018acs.rds")
+  saveRDS(my_vars, "my_vars.rds")
+} else { 
   
-  url <- "https://factfinder.census.gov/faces/nav/jsf/pages/download_center.xhtml#none"
-  
-  for (i in seq_along(chromeVers)) {
-    
-    try(rm(rD))
-    try(remDr$close())
-    try(rm(remDr))
-    gc()
-    
-    # error handling - skips to next URL if it gets an error
-    rD <- try(rsDriver(browser = "chrome"
-                       ,verbose = TRUE
-                       ,chromever = chromeVers[i] # "73.0.3683.68"
-                       ,extraCapabilities = eCaps))
-    
-    # if (class(rD)[1] == "try-error")
-    #   next
-    # Sys.sleep(1)
-    
-    remDr <- try(rD[["client"]])
-    
-    Sys.sleep(3) # give time for browser to get ready
-    
-    try(remDr$navigate(url))
-    
-    out <-  tryCatch(
-      remDr$getCurrentUrl() %>%
-        as.character(),
-      error = function(cond) {
-        message(paste("URL does not seem to exist:", url))
-        message("Here's the original error message:")
-        message(cond)
-        # Choose a return value in case of error
-        return("not it")
-      }
-    )
-    
-    if (out == url)
-      
-      break
-    
-  }
-  
-  webElems <- remDr$findElements("partial link text", "NEXT")
-  
-  remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-  remDr$click()
-  
-  Sys.sleep(2)
-  
-  assign('rD', rD, 1)
-  assign('remDr', remDr, 1)
-  assign('eCaps', eCaps, 1)
+  counties_2018acs <- read_rds("counties_2018acs.rds")
+  my_vars <- read_rds("my_vars.rds")
   
 }
-
-navToCensusSite()
-
-# eCaps <- list(
-#   chromeOptions = list(
-#     args = c('--no-sandbox', '--disable-gpu', '--start-maximized','--disable-popup-blocking','--disable-extensions'),
-#     prefs = list(
-#       # "profile.default_content_settings.popups" = 0L,
-#       # "profile.default_content_setting_values.automatic_downloads" = 1L,
-#       # "download.prompt_for_download" = FALSE,
-#       # "download.directory_upgrade" = TRUE,
-#       # "safebrowsing.enabled" = TRUE,
-#       # "safebrowsing.disable_download_protection" = TRUE,
-#       "download.default_directory" = getwd() # paste0("C:/selenium",'/',gsub("-|:| ", "",Sys.Date()))
-#     )
-#   )
-# )
-# 
-# rD <- rsDriver(browser = "chrome"
-#                ,verbose = TRUE
-#                ,chromever = "73.0.3683.68"
-#               ,  extraCapabilities = eCaps)
-# 
-# remDr <- rD[["client"]]
-# 
-# url <- "https://factfinder.census.gov/faces/nav/jsf/pages/download_center.xhtml#none"
-# 
-# remDr$navigate(url)
-# 
-# webElems <- remDr$findElements("partial link text", "NEXT")
-# 
-# remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-# remDr$click()
-# 
-# Sys.sleep(2)
-
-# select from dropdown
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="filterDimensionListId"]')
-option$clickElement()
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="filterDimensionListId"]/option[2]')
-option$clickElement()
-
-Sys.sleep(2)
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="listDimensionListId"]')
-option$clickElement()
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="listDimensionListId"]/option[1]')
-option$clickElement()
-
-Sys.sleep(2)
-
-webElems <- remDr$findElements("partial link text", "ADD TO YOUR SELECTIONS")
-remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-remDr$click()
-
-Sys.sleep(2)
-
-webElems <- remDr$findElements("partial link text", "NEXT")
-remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-remDr$click()
-
-Sys.sleep(2)
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="summaryLevel"]')
-option$clickElement()
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="summaryLevel"]/option[14]')
-option$clickElement()
-
-Sys.sleep(2)
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="state"]')
-option$clickElement()
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="state"]/option[6]')
-option$clickElement()
-
-Sys.sleep(2)
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="geoAssistList"]')
-option$clickElement()
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="geoAssistList"]/option[1]')
-option$clickElement()
-
-Sys.sleep(2)
-
-webElems <- remDr$findElements("partial link text", "ADD TO YOUR SELECTIONS")
-
-remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-remDr$click()
-
-Sys.sleep(2)
-
-webElems <- remDr$findElements("partial link text", "NEXT")
-
-remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-remDr$click()
-
-Sys.sleep(2)
-
-# poverty S1703 or 1701 for 2017 yera
-# food stamps S2201
-
-# sort the page //*[@id="yui-dt4-th-p_product_code-liner"]
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S0101"]') # AGE AND SEX
-option$clickElement()
-
-# LIVING ARRANGEMENTS OF ADULTS 18 YEARS AND OVER BY AGE
-# B09021
-
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1101"]') # HOUSEHOLDS AND FAMILIES
-# option$clickElement()
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-dt0-th-p_product_code-liner"]') # sort results
-# option$clickElement()
-# 
-# Sys.sleep(2)
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-dt1-th-p_product_code-liner"]') # sort results again
-# option$clickElement()
-# 
-# Sys.sleep(2)
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-pg2-1-next-link"]/img') # navigate to next page
-# option$clickElement()
-# 
-# Sys.sleep(2)
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1701"]') # POVERTY STATUS IN THE PAST 12 MONTHS
-# option$clickElement()
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S2201"]') # FOOD STAMPS/Supplemental Nutrition Assistance Program (SNAP)
-# option$clickElement()
-# 
-# Sys.sleep(2)
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="yui-pg3-0-rpp"]/option[3]') # view 75 rows per page
-# option$clickElement()
-# 
-# Sys.sleep(2)
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S2303"]')  # EMPLOYMENT CHARACTERISTICS OF FAMILIES
-# option$clickElement() 
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S2503"]') # FINANCIAL CHARACTERISTICS
-# option$clickElement()
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1401"]') # SCHOOL ENROLLMENT
-# option$clickElement()
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_S1501"]') # EDUCATIONAL ATTAINMENT
-# option$clickElement()
-# 
-# searchBox <-remDr$findElement(using = 'xpath'
-#                               ,value = '//*[@id="prodautocomplete"]')
-# searchBox$clearElement()
-# searchBox$sendKeysToElement(list("income", "\uE007"))
-# 
-# option <- remDr$findElement(using = 'xpath', '//*[@id="ACS_17_5YR_DP03"]') # SELECTED ECONOMIC CHARACTERISTICS
-# option$clickElement()
-
-# B02001 # RACE
-# B05001 # NATIVITY AND CITIZENSHIP STATUS IN THE UNITED STATES
-
-option <- remDr$findElement(using = 'xpath', '//*[@id="dnld_btn_below"]')
-option$clickElement()
-
-# interactively click ok
-# and save the zip file with the data in the working directory
-
-# webElems <- remDr$findElements(using = "tag name", "iframe")
-# # webElems <- remDr$findElements(value = "//frame") # using xpath
-# # webElems <- remDr$findElements("css", value = "frame") # using css
-# 
-# sapply(webElems, function(x){x$getElementAttribute("src")})
-# 
-# remDr$switchToFrame(webElems[[2]])
-# 
-# webElems <- remDr$findElements("partial link text", "DOWNLOAD")
-# remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-# remDr$click()
-
-webElems <- remDr$findElements(using = "tag name", "iframe")
-# webElems <- remDr$findElements(value = "//frame") # using xpath
-# webElems <- remDr$findElements("css", value = "frame") # using css
-
-sapply(webElems, function(x){x$getElementAttribute("src")})
-
-remDr$switchToFrame(webElems[[1]])
-XML::htmlParse(remDr$getPageSource()[[1]])
-
-webElems <- remDr$findElements("partial link text", "OK")
-webElems$highlightElement()
-remDr$mouseMoveToLocation(webElement = webElems[[1]]) # move mouse to the element we selected
-remDr$click()
-
-
-
-webElem <- remDr$findElement(using = 'xpath',  '//*[@id="yui-gen0-button"]')
-# visually confirm element
-webElem$highlightElement()
-# click the button to bring up alert
-webElem$clickElement()
-
-
-remDr$close()
-rm(rD)
-gc()
-
-
-if(file.exists("cb_2018_us_county_500k.Rdata")) {
-  
-  print("file has been unziped already")
-  
-} else {
-  
-  ifelse(!dir.exists(file.path("./shapefiles")),
-         dir.create(file.path("./shapefiles")), FALSE)
-  
-  fname = unzip("aff_downloadCalifTract.zip",
-                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
-
-}
-
-# extract data for USA
-
-if(file.exists("US_Data.RData")) {
-  
-  print("file has been unziped already")
-  
-} else {
-  
-  ifelse(!dir.exists(file.path("./shapefiles")),
-         dir.create(file.path("./shapefiles")), FALSE)
-  
-  fname = unzip("aff_download_USA.zip",
-                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
-  
-  US_metaData <- fname %>% .[grepl("metadata",.)] %>% 
-    purrr::map_df( data.table::fread, stringsAsFactors = FALSE, .id = "file") %>% 
-    left_join( fname %>% .[grepl("metadata",.)] %>% 
-                 gsub("ACS_|_metadata\\.csv","",.) %>% 
-                 as.data.frame() %>% 
-                 rownames_to_column(var = "file") %>% 
-                 select(file, Name = 2))
-  
-  try(rm(stS1701))
-
-  datafiles <- fname %>%
-    .[grepl("with_ann", .)]
-  
-  for(i in seq_along(datafiles)) {
-    
-    x <- data.table::fread(datafiles[i], stringsAsFactors = FALSE)
-    
-    listOfAttr <- paste0(names(x), " = ",
-                         x[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character())
-    
-    x <- x %>% 
-      data.table::setattr(., "comment", listOfAttr)
-    
-    assign(datafiles[i] %>% sub(".*(\\D\\d+).*","\\1",.)
-           ,x)
-    
-  }
-  
-  save(B09021, S0101, US_metaData, file = "~/GitHub/covid19/US_Data.RData")
-  
-}
-
-# read census traact data
-
-
-if(file.exists("CA_Data.RData")) {
-  
-  print("file has been unziped already")
-  
-} else {
-  
-  ifelse(!dir.exists(file.path("./shapefiles")),
-         dir.create(file.path("./shapefiles")), FALSE)
-  
-  fname = unzip("aff_downloadCalifTract.zip",
-                exdir = "shapefiles") #, list=TRUE)  $Name %>% .[grepl("shp$",.)]
-  
-  CA_metaData <- fname %>% .[grepl("metadata",.)] %>% 
-    purrr::map_df( data.table::fread, stringsAsFactors = FALSE, .id = "file") %>% 
-    left_join( fname %>% .[grepl("metadata",.)] %>% 
-                 gsub("ACS_|_metadata\\.csv","",.) %>% 
-                 as.data.frame() %>% 
-                 rownames_to_column(var = "file") %>% 
-                 select(file, Name = 2))
-  
-  
-  datafiles <- fname %>%
-    .[grepl("with_ann", .)]
-  
-  for(i in seq_along(datafiles)) {
-    
-    x <- data.table::fread(datafiles[i], stringsAsFactors = FALSE)
-    
-    listOfAttr <- paste0(names(x), " = ",
-                         x[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character())
-    
-    x <- x %>% 
-      data.table::setattr(., "comment", listOfAttr)
-    
-    assign(datafiles[i] %>% sub(".*(\\D\\d+).*","\\1",.)
-           ,x)
-    
-  }
-  
-  save(B09021, S0101, CA_metaData, file = "~/GitHub/covid19/CA_Data.RData")
-  
-}
-
-
-
-
-metaData <- dir(full.names = TRUE, recursive = TRUE) %>%
-  .[grepl("_metadata", .)] %>% 
- # .[grepl("CalifTracts", .)] %>% 
-  .[!grepl("old",.)] %>% 
-  purrr::map_df( fread, stringsAsFactors = FALSE, .id = "file") %>% 
-  left_join(dir(full.names = TRUE, recursive = TRUE) %>%
-              .[grepl("_metadata", .)] %>% 
-              .[grepl("CalifTracts", .)] %>% 
-              .[!grepl("old",.)] %>% 
-              basename() %>% gsub("ACS_|_metadata\\.csv","",.) %>% 
-              as.data.frame() %>% 
-              rownames_to_column(var = "file") %>% 
-              select(file, Name = 2))
-
-metaData %>% 
-  data.table::fwrite(file = "./metaData_2017_5yr.txt",  sep = "\t")
-
-metaData %>% 
-  count(Name) %>% 
-  mutate(dataFile = gsub(".*_([A-z]{1,2}[0-9]{2,5}).*", "\\1", Name),
-         description = case_when(dataFile == "DP03" ~ "--SELECTED ECONOMIC CHARACTERISTICS",
-                                 dataFile == "S0601" ~ "--SELECTED CHARACTERISTICS OF THE TOTAL AND NATIVE POPULATIONS IN THE UNITED STATES",
-                                 dataFile == "S1101" ~ "--HOUSEHOLDS AND FAMILIES",
-                                 dataFile == "S1401" ~ "--SCHOOL ENROLLMENT",
-                                 dataFile == "S1501" ~ "--EDUCATIONAL ATTAINMENT",
-                                 dataFile == "S1701" ~ "POVERTY STATUS IN THE PAST 12 MONTHS",
-                                 dataFile == "S2201" ~ "FOOD STAMPS/Supplemental Nutrition Assistance Program",
-                                 dataFile == "S2303" ~ "--EMPLOYMENT CHARACTERISTICS OF FAMILIES",
-                                 dataFile == "S2503" ~ "--FINANCIAL CHARACTERISTICS"
-         )) %>% View("metadataDtls")
-
-View(metaData)
-
-try(rm(stS1701))
-
-stS1701 <- dir(full.names = TRUE, recursive = TRUE) %>%
-  .[grepl("with_ann", .)] %>% 
-  .[grepl("S1701", .)] %>% 
-  .[grepl("CalifTracts", .)] %>% 
-  .[!grepl("OLD", .)] %>% 
-  map_df( fread, stringsAsFactors = FALSE, .id = "file") %>% 
-  left_join(dir(full.names = TRUE, recursive = TRUE) %>%
-              .[grepl("with_ann", .)] %>% 
-              .[grepl("S1701", .)] %>% 
-              .[grepl("CalifTracts", .)] %>%
-              .[!grepl("OLD", .)] %>% 
-              basename() %>% gsub("ACS_|_with_ann\\.csv","",.) %>% 
-              as.data.frame() %>% 
-              rownames_to_column(var = "file") %>% 
-              select(file, Name = 2)) %>% 
-  select(GEO.id:`GEO.display-label`,Name
-        ,  HC01_EST_VC01:HC01_MOE_VC01,   #  HC01_EST_VC01 Total; Est; Population for whom poverty status is determined
-         HC01_EST_VC53:HC01_MOE_VC53) %>% # HC01_EST_VC53 Total; Estimate; ALL INDIVIDUALS WITH INCOME BELOW THE FOLLOWING POVERTY RATIOS - 125 percent of poverty level
-  filter(!grepl("--",`GEO.display-label`))
-
-listOfAttr <- paste0(names(stS1701), " = ",
-                     stS1701[1,] %>% as.vector() %>% unlist(., use.names = FALSE) %>% as.character()) %>% 
-  setattr(., "comment", listOfAttr)
-
-summary(stS1701)
-str(stS1701)
-attributes(stS1701)$comment
-
-```
-
-
-```{r analyzeData, eval=FALSE}
-
-rm(list = ls()) #start with empty workspace
 
 theme_set(theme_bw())
 
@@ -907,77 +475,33 @@ theme_set(theme_bw())
 
 load("cdc_estimates.RData")
 
-cdcInterpolated <- cdc_estimates %>% 
-  mutate(EndMonth = sub(".*April_(.*_\\d{2}).*", "\\1", link) %>% 
-           sub("_", " ",.) %>% 
-           sapply(., function(x)
-             case_when(
-               grepl("October|November|December", x, ignore.case = TRUE) ~ paste("2009", x),
-               TRUE ~  paste("2010", x)
-             )) %>% 
-           as.Date(., format = "%Y %B %d")) %>% 
-  bind_rows( cdc_estimates %>% distinct(X2009H1N1 ,type, metric) %>% 
-               mutate(Valuenum = 0,
-                      EndMonth = as.Date("2009-04-12") )) %>% 
-  unite("Pop_type", X2009H1N1, type, remove = FALSE) %>% 
-  filter(X2009H1N1 != type) %>% 
-  select(-value) %>% 
-  pivot_wider(names_from = metric, values_from = Valuenum)
-
-cols_estimate <- names(cdcInterpolated)[6:8]
-rows_estimate <- cdcInterpolated$Pop_type %>% unique # %>% .[!grepl("Total", .)]
-
-estData_ <- list()
-est_ <- list()
-
-startTime <- Sys.time() # start timer
-
-for (i in seq_along(rows_estimate)) {
+if(FALSE) {
   
-  timediff <- Sys.time() - startTime
+  system(paste0('open "'
+                ,'helperFunctions.r'
+                , '"'))
   
-  tmp <- cdcInterpolated %>%
-    filter(Pop_type == rows_estimate[i]) %>% 
-    right_join( data.frame(EndMonth = seq(cdcInterpolated$EndMonth %>% min()
-                                          ,cdcInterpolated$EndMonth %>% max(),
-                                          by = "day"))
-    )
-  
-  for (j in seq_along(cols_estimate)) {
-    
-    tmp_ <- tmp %>%
-      select(EndMonth, cols_estimate[j]) %>%
-      arrange(EndMonth)
-    
-    x. <- tmp_ %>% select(1) %>% unlist
-    y. <- tmp_ %>% select(2) %>% unlist
-    
-    est_[[j]] <- splinefun(x., y., method = "hyman")   (x.) %>%
-      as.tibble() %>%
-      mutate(colEst = paste0("imp_", cols_estimate[j]),
-             SubIteration = j) %>%
-      bind_cols(EndMonth = x.) %>%
-      mutate(EndMonth = as.Date(EndMonth, origin = "1970-01-01"))
-    
-  }
-  estData_[[i]] <- est_ %>% # head(1000) %>% # "541/541 2.3 mins"
-    plyr::ldply(data.frame) %>%
-    mutate(Pop_type = rows_estimate[i],
-           Iteration = i)
 }
-
-t_intr_estm <- estData_ %>% # head(1000) %>% # "541/541 2.3 mins"
-  plyr::ldply(data.frame) %>%
-  select(-c(Iteration, SubIteration)) %>%
-  pivot_wider(names_from = colEst, values_from = value)
-
-rm(list = setdiff(ls(), c("t_intr_estm"
-                          ,"cdc_estimates",
-                          "cdcInterpolated")))
 
 source("helperFunctions.r")
 
-source('~/GitHub/covid19/covid19DataNYTimes.R')
+cdcInterpolated<- intr_Dat(cdc_estimates)
+
+t_intr_estm <- est_intr_Dat(cdcInterpolated)
+
+rm(list = setdiff(ls(), c("counties_2018acs",
+                          "my_vars",
+                          "t_intr_estm",
+                          "cdc_estimates",
+                          "cdcInterpolated")))
+
+if( !exists("US_CoronaVirus")) {
+  
+  source('~/GitHub/covid19/covid19DataNYTimes.R')
+  
+}
+
+source("helperFunctions.r")
 
 cols <- c("Cases" = "#d8b365", "Deaths" = "#998ec3", "Hospitalizations" = "#5ab4ac")
 
@@ -1025,6 +549,13 @@ H1N1_Death_Max <- t_intr_estm %>%
   filter(dayCnt == max(t_intr_estm$dayCnt))
 
 # create pdf file with charts ####
+
+if( file.exists( paste0("2019H1N1_vs_COVID19_"
+                        ,data_Date %>% gsub("-","",.),".pdf"))  ) 
+  unlink( paste0("2019H1N1_vs_COVID19_"
+                 ,data_Date %>% gsub("-","",.),".pdf")
+  )
+
 
 Cairo::CairoPDF(file = paste0("2019H1N1_vs_COVID19_"
                               ,data_Date %>% gsub("-","",.),".pdf"),
@@ -1099,7 +630,7 @@ t_intr_estm %>%
                labels = pretty_date_breaks( seq(min(t_intr_estm$EndMonth), max(t_intr_estm$EndMonth), by = "1 month")
                                             ,format1 = "%Y %b", format2 = "%Y %b")
                #,limits = c(1900,2000), expand = c(0,0)
-  ) +
+  ) + 
   facet_wrap(vars( X2009H1N1), scales = "free") +
   theme_plot +
   #theme(legend.position = "top") +
@@ -1172,6 +703,7 @@ Source: https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)
                       size = 0.2, linetype = 1
                       , alpha = .8)
 
+
 sum_US_CoronaVirus %>% 
   ggplot +
   geom_ribbon(data = t_intr_estm %>% 
@@ -1217,7 +749,7 @@ sum_US_CoronaVirus %>%
   geom_point(data = Cov_currentDay
              , aes(x = dayCnt,
                    y = totalDailyCases)
-             ,colour = "red") +
+             ,colour = "red") + 
   scale_fill_manual(name = "Type",
                     values = cols) +
   scale_y_log10(label = human_numbers) +
@@ -1303,6 +835,7 @@ sum_US_CoronaVirus %>%
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
 
+
 sum_US_CoronaVirus %>% 
   ggplot +
   geom_ribbon(data = t_intr_estm %>% 
@@ -1369,7 +902,7 @@ sum_US_CoronaVirus %>%
                     values = cols) +
   scale_y_log10(label = human_numbers) +
   theme_plot +
-  coord_cartesian(xlim = c(1, t_intr_estm$dayCnt+50)
+  coord_cartesian(xlim = c(1, max(t_intr_estm$dayCnt)+50)
                   , ylim = c(1, H1N1_Case_Max$imp_highEst)) +
   annotation_logticks(sides = "l",
                       short = unit(1,"mm"),
@@ -1388,6 +921,7 @@ sum_US_CoronaVirus %>%
                         ,"(Covid19);
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
+
 
 sum_US_CoronaVirus %>% 
   ggplot +
@@ -1455,7 +989,7 @@ sum_US_CoronaVirus %>%
                    y = totalDailyCases)
              ,colour = "red") +
   theme_plot +
-  coord_cartesian(xlim = c(1, t_intr_estm$dayCnt+50)
+  coord_cartesian(xlim = c(1, max(t_intr_estm$dayCnt)+50)
                   , ylim = c(1, H1N1_Case_Max$imp_highEst)) +
   
   labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
@@ -1468,6 +1002,8 @@ sum_US_CoronaVirus %>%
                         ,"(Covid19);
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
+
+
 
 ### Total Deaths ####
 
@@ -1555,6 +1091,8 @@ Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
 ,"(Covid19);
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
+
+
 
 sum_US_CoronaVirus %>% 
   ggplot +
@@ -1686,7 +1224,6 @@ coronaChange <- coronaChange %>%
           changeType = replace_na(changeType, "Other"),
           dataSet = "Coronavirus") 
 
-
 H1N1Change <- t_intr_estm %>% 
   select(dayCnt, Pop_type, imp_MidLevelRange) %>%
   filter( grepl(" Total_", Pop_type)) %>% 
@@ -1775,7 +1312,7 @@ coronaChange %>%
   geom_col(aes(x = dayCnt,  y = Cnt, 
                fill = changeType), alpha = .8) +
   scale_y_continuous(label = human_numbers
-                     ,expand = expand_scale(mult = c(0, .1))
+                     ,expand = expansion(mult = c(0, .1))
   ) +
   #scale_x_continuous()
   scale_fill_brewer(name = "Change Type"
@@ -1798,6 +1335,7 @@ coronaChange %>%
                         ,"(Covid19);
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
+
 
 coronaChange %>% 
   bind_rows(H1N1Change) %>% 
@@ -1827,7 +1365,7 @@ coronaChange %>%
   geom_col(aes(x = dayCnt,  y = Cnt,
                fill = changeType), alpha = .8) +
   scale_y_continuous(label = human_numbers
-                     ,expand = expand_scale(mult = c(0, .1))
+                     ,expand = expansion(mult = c(0, .1))
   ) +
   scale_fill_brewer(name = "Change Type"
                     ,palette = "Set1"
@@ -1849,6 +1387,314 @@ coronaChange %>%
                         ,"(Covid19);
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
+
+CoronaCases <- coronaChange %>% 
+  filter(type == "cases") %>% 
+  mutate(Cnt = na_if(Cnt, 0))
+
+dates <- ymd(CoronaCases$date)
+values <- CoronaCases$Cnt
+
+calendarHeatmap(dates
+                , values
+                , title = "COVID 19 Cases in the US"
+                , subtitle = ""
+                , legendtitle = "Cases")
+
+CoronaDeaths <- coronaChange %>% 
+  filter(type == "deaths") %>% 
+  mutate(Cnt = na_if(Cnt, 0))
+
+dates <- ymd(CoronaDeaths$date)
+values <- CoronaDeaths$Cnt
+
+calendarHeatmap(dates
+                , values
+                , title = "COVID 19 Deaths in the US"
+                , subtitle = ""
+                , legendtitle = "Deaths")
+
+# print ternd lines
+
+cntyList <- data.frame(county = c(6071,6059,6065, 6037),
+                       cntyLabel= c("San Bernardino",
+                                    "Orange","Riverside",
+                                    "Los Angeles")
+)
+
+for(i in seq_along(cntyList$county) ) {
+  
+  dat <- US_CoronaVirus %>% 
+    filter(fips == cntyList$county[i]) %>% 
+    mutate(date = as.Date(date)) %>% 
+    arrange(fips, date) %>% 
+    group_by(fips, county) %>% 
+    mutate(newCases = lag(cases),
+           newCases = cases - newCases) %>% 
+    ungroup() %>% 
+    as.data.table() %>% 
+    .[, rollingMean07Day := frollmean(.[, newCases], 7) ] %>%
+    .[, rollingMean14Day := frollmean(.[, newCases], 14) ] %>%
+    select(date, county, newCases, contains("rolling")) %>%
+    pivot_longer(-c(date, county), names_to = "cat", values_to = "count") %>% 
+    mutate(count = round(count, 0))
+  
+  maxRollingValues <- dat %>% 
+    filter(cat != "newCases") %>% 
+    group_by(cat) %>% 
+    filter(date == max(date)) %>% 
+    ungroup
+  
+  gPlot <- ggplot() +
+    geom_col(data = dat %>% 
+               filter(cat == "newCases"),
+             aes(x = date, y = count )) +
+    geom_line(data = dat %>% 
+                filter(cat != "newCases"),
+              aes(x = date, y = count
+                  ,color = cat)
+    ) +
+    geom_text(data = dat %>% 
+                filter(cat == "newCases")
+              ,aes(x = date, y = count, label = scales::comma(count, accuracy = 1)),
+              size = 3,alpha = .8) +
+    geom_point(data = maxRollingValues,
+               aes(x = date, y = count
+                   ,color = cat )
+               ,alpha = .8
+    ) +
+    geom_text(data = maxRollingValues 
+              ,aes(x = date, y = count, color = cat
+                   ,label = scales::comma(count, accuracy = 1)),
+              size = 3, show.legend = FALSE
+              ,alpha = .8) +
+    labs(title = maxRollingValues[1,2]
+         ,subtitle = "New cases, rolling average 7 and 14 days"
+         ,y = "Cases"
+         ,x = ""
+         ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                          ,data_Date
+                          ,"(Covid19)")
+    )
+  
+  print(gPlot)
+  
+}
+
+
+countyPop <- counties_2018acs %>% 
+  filter(variable == "B01003_001") %>% 
+  #head(500) %>% 
+  mutate(state = sub('.*,', '', NAME),
+         state = trimws(state),
+         fips = substr(GEOID, start = 1, stop = 2) ) %>% 
+  group_by(state, fips) %>% 
+  summarize(st_pop = sum(estimate, na.rm = TRUE)) %>% 
+  full_join(US_StCoronaVirus %>% 
+              mutate( fips = str_pad(fips, 2, pad = "0"))
+  ) %>% 
+  mutate(casesPer1K = (cases/st_pop ) * 1000,
+         casesPer1K = round(casesPer1K, 0),
+         date = as.Date(date)) %>% 
+  left_join(data.frame(state = state.name,
+                       state_region = state.region,
+                       state_abb = state.abb)
+  )
+
+max_region <- countyPop %>% 
+  group_by(fips) %>%
+  arrange(desc(casesPer1K)) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  group_by(state_region) %>%
+  arrange(desc(casesPer1K)) %>% 
+  slice(1:4) %>% 
+  ungroup() %>% 
+  filter(!is.na(state_abb))
+
+# RColorBrewer::display.brewer.all()
+
+mycolors <- colorRampPalette(RColorBrewer::brewer.pal(8, "Accent"))(length(unique(max_region$state))) %>% 
+  sub("#FEF295", "#31a354",.)
+
+p <- ggplot() +
+  geom_line(data = countyPop %>% 
+              select( fips,
+                      date,
+                      state1 = state,
+                      state_region,
+                      casesPer1K) %>% 
+              filter(!is.na(state_region))
+            ,aes(x =  date
+                 , y = casesPer1K,
+                 group = state1)
+            , color = "grey"
+            ,alpha = .5
+            ,show.legend = FALSE) +
+  facet_wrap(~ state_region
+             ,scales = "fixed") +
+  geom_line(data = countyPop %>% 
+              select( fips,
+                      date,
+                      state1 = state,
+                      state_region,
+                      casesPer1K) %>% 
+              filter(!is.na(state_region)) %>% 
+              semi_join( max_region %>% 
+                           select( fips,
+                                   state)
+              )
+            ,aes(x =  date
+                 , y = casesPer1K,
+                 color = state1),
+            ,alpha = .8
+            ,show.legend = FALSE) +
+  geom_point(data = countyPop %>% 
+               select( fips,
+                       date,
+                       state1 = state,
+                       state_region,
+                       casesPer1K) %>%
+               filter(date == max(date) ) %>% 
+               filter(!is.na(state_region)) %>% 
+               semi_join( max_region %>% 
+                            select( fips,
+                                    state)
+               )
+             ,aes(x =  date
+                  , y = casesPer1K,
+                  color = state1),
+             , size = 1
+             , stroke = .03
+             , shape = 21
+             , alpha = .5
+             ,show.legend = FALSE) +
+  scale_x_date(expand = expansion(mult = c(.1, .2))) +
+  scale_y_continuous(#label = human_numbers,
+    expand = expansion(mult = c(0, .1))
+  ) +
+  scale_color_manual(values = mycolors)
+
+p +
+  ggrepel::geom_text_repel(data = countyPop %>% 
+                             select( fips,
+                                     date,
+                                     state1 = state,
+                                     state_region,
+                                     casesPer1K,
+                                     state_abb) %>%
+                             filter(date == max(date) ) %>% 
+                             filter(!is.na(state_region)) %>% 
+                             semi_join( max_region %>% 
+                                          select( fips,
+                                                  state)
+                             )
+                           ,aes(x =  date #+ 20
+                                , y = casesPer1K,
+                                color = state1,
+                                label = paste(state_abb,scales::comma(casesPer1K)
+                                )
+                           )
+                           ,show.legend = FALSE,
+                           size = 3,
+                           force             = 0.5,
+                           nudge_x           = 0.15,
+                           hjust             = -1,
+                           segment.size  = 0.2,
+                           segment.color = "grey50",
+                           direction     = "y"
+  ) +
+  labs(title = "Cummulative cases per 1k persons by state region",
+       subtitle = "the four highest states by region are highlighted",
+       y = "",
+       x = "")
+
+# now by county near Los Angeles
+
+Ca_abbv_counties <- "https://sv08data.dot.ca.gov/contractcost/map.html" %>%
+  xml2::read_html() %>%
+  rvest::html_table() %>% 
+  as.data.frame() %>% 
+  setNames(gsub("[^[:alnum:]]", perl = TRUE, "", names(.)))
+
+CalifCounties <- US_CoronaVirus %>% 
+  filter(state == "California") %>% 
+  mutate(GEOID = str_pad(fips, 5, pad = "0")) %>% 
+  inner_join( counties_2018acs %>% 
+                filter(variable == "B01003_001") %>% 
+                filter(grepl("California", NAME))
+  ) %>% 
+  mutate(casesPer1K = (cases/estimate )* 1000,
+         casesPer1K = round(casesPer1K, 0),
+         date = as.Date(date)) %>% 
+  left_join(Ca_abbv_counties %>% 
+              select(county  = COUNTY, ABBREV)
+  )
+
+selectedCounties <- "Ventura|Santa Barbara|San Francisco|San Bernardino|Riverside|Kern|Imperial|San Diego|Orange|Los Angeles|Kings|Tulare|Marin"
+
+p <- ggplot() +
+  geom_line(data = CalifCounties
+            ,aes(x =  date
+                 , y = casesPer1K,
+                 group = county)
+            , color = "grey"
+            ,alpha = .5
+            ,show.legend = FALSE) +
+  geom_line(data = CalifCounties %>% 
+              filter(grepl(selectedCounties
+                           , county ))
+            ,aes(x =  date
+                 , y = casesPer1K,
+                 color = county),
+            ,alpha = .8
+            ,show.legend = FALSE) +
+  geom_point(data = CalifCounties %>% 
+               filter(grepl(selectedCounties
+                            , county ))  %>% 
+               filter(date == max(date) )
+             ,aes(x =  date
+                  , y = casesPer1K,
+                  color = county),
+             , size = 1
+             , stroke = .1
+             , shape = 21
+             , alpha = .5
+             ,show.legend = FALSE) +
+  scale_x_date(expand = expansion(mult = c(.1, .2))) +
+  scale_y_continuous(#label = human_numbers,
+    expand = expansion(mult = c(0, .1))
+  ) +
+  scale_colour_brewer(
+    palette = "Paired",
+    direction = 1,
+    aesthetics = "colour"
+  )
+
+p +
+  ggrepel::geom_text_repel(data = CalifCounties %>% 
+                             filter(grepl(selectedCounties, county )) %>% 
+                             filter(date == max(date) )
+                           ,aes(x =  date #+ 20
+                                , y = casesPer1K,
+                                color = county,
+                                label = paste(ABBREV
+                                              ,scales::comma(casesPer1K)
+                                )
+                           )
+                           ,show.legend = FALSE,
+                           size = 3,
+                           force             = 0.5,
+                           nudge_x           = 0.15,
+                           hjust             = -1,
+                           segment.size  = 0.2,
+                           segment.color = "grey50",
+                           direction     = "y"
+  ) +
+  labs(title = "Cummulative cases per 1k persons for California counties",
+       subtitle = "selected counties highlighted",
+       y = "",
+       x = "")
 
 if(FALSE) {
   
@@ -1945,247 +1791,244 @@ if(FALSE) {
       match_fun = list(`==`, `>=`, `<=`)
     )
   
-}
-
-rm(list=setdiff(ls(), "data_Date")) #start with empty workspace
-
-plotMaps <- FALSE
-
-if(plotMaps) {
+  rm(list=setdiff(ls(), "data_Date")) #start with empty workspace
   
-load("hosp18.RData")
-
-load("cb_2018_us_county_500k.Rdata")
-
-cb_2018_us_county_500k <- cb_2018_us_county_500k 
-
-
-califCounties <- cb_2018_us_county_500k %>% 
-  filter(STATEFP == "06") %>% 
-  rmapshaper::ms_simplify(., keep = 0.01,
-                          keep_shapes = TRUE) %>% 
-  st_transform(4269) 
-
-rm(cb_2018_us_county_500k)
-
-d <- hosp18 %>% filter(
-  # HEALTH_SVC_AREA == "12 - Inland Counties" & 
-  LIC_CAT == "General Acute Care Hospital") %>% 
-  select(FAC_NO, FAC_NAME, LONGITUDE, LATITUDE
-         ,  HEALTH_SVC_AREA, TOT_LIC_BEDS
-         ,  IC_LIC_BEDS) %>% 
-  distinct( LONGITUDE, LATITUDE, .keep_all = TRUE) %>% 
-  mutate_at(vars(LONGITUDE, LATITUDE),
-            list(~as.numeric(.))) #%>% 
-# st_as_sf( coords = c("LONGITUDE", "LONGITUDE"), crs = 4269 ) 
-
-library(deldir)
-
-# voronoi <- deldir(d$LONGITUDE, d$LATITUDE)
-
-voronoipolygons = function(layer) {
-  require(deldir)
-  crds = layer@coords
-  z = deldir(crds[,1], crds[,2])
-  w = tile.list(z)
-  polys = vector(mode='list', length=length(w))
-  require(sp)
-  for (i in seq(along=polys)) {
-    pcrds = cbind(w[[i]]$x, w[[i]]$y)
-    pcrds = rbind(pcrds, pcrds[1,])
-    polys[[i]] = Polygons(list(Polygon(pcrds)), ID=as.character(i))
+  plotMaps <- FALSE
+  
+  if(plotMaps) {
+    
+    load("hosp18.RData")
+    
+    load("cb_2018_us_county_500k.Rdata")
+    
+    cb_2018_us_county_500k <- cb_2018_us_county_500k 
+    
+    
+    califCounties <- cb_2018_us_county_500k %>% 
+      filter(STATEFP == "06") %>% 
+      rmapshaper::ms_simplify(., keep = 0.01,
+                              keep_shapes = TRUE) %>% 
+      st_transform(4269) 
+    
+    rm(cb_2018_us_county_500k)
+    
+    d <- hosp18 %>% filter(
+      # HEALTH_SVC_AREA == "12 - Inland Counties" & 
+      LIC_CAT == "General Acute Care Hospital") %>% 
+      select(FAC_NO, FAC_NAME, LONGITUDE, LATITUDE
+             ,  HEALTH_SVC_AREA, TOT_LIC_BEDS
+             ,  IC_LIC_BEDS) %>% 
+      distinct( LONGITUDE, LATITUDE, .keep_all = TRUE) %>% 
+      mutate_at(vars(LONGITUDE, LATITUDE),
+                list(~as.numeric(.))) #%>% 
+    # st_as_sf( coords = c("LONGITUDE", "LONGITUDE"), crs = 4269 ) 
+    
+    library(deldir)
+    
+    # voronoi <- deldir(d$LONGITUDE, d$LATITUDE)
+    
+    voronoipolygons = function(layer) {
+      require(deldir)
+      crds = layer@coords
+      z = deldir(crds[,1], crds[,2])
+      w = tile.list(z)
+      polys = vector(mode='list', length=length(w))
+      require(sp)
+      for (i in seq(along=polys)) {
+        pcrds = cbind(w[[i]]$x, w[[i]]$y)
+        pcrds = rbind(pcrds, pcrds[1,])
+        polys[[i]] = Polygons(list(Polygon(pcrds)), ID=as.character(i))
+      }
+      SP = SpatialPolygons(polys)
+      voronoi = SpatialPolygonsDataFrame(SP
+                                         ,data=data.frame(x=crds[,1], 
+                                                          y=crds[,2]
+                                                          ,row.names=sapply(slot(SP
+                                                                                 ,  'polygons'), 
+                                                                            function(x) slot(x, 'ID'))))
+    }
+    
+    voronoiPolygon <- voronoipolygons(sp::SpatialPoints(cbind(d$LONGITUDE,
+                                                              d$LATITUDE), 
+                                                        sp::CRS("+init=epsg:4269"))) %>% 
+      st_as_sf () %>% 
+      st_set_crs(4269) %>%
+      right_join(d, 
+                 by = c("x" = "LONGITUDE"
+                        ,"y" = "LATITUDE")) %>% 
+      st_intersection(., st_union(califCounties)) %>% 
+      mutate(HospArea =  st_area(geometry))
+    
+    rm(list = setdiff(ls(), c("voronoiPolygon", "califCounties", 'hosp18', "data_Date")))
+    gc()
+    
+    source("helperFunctions.r")
+    
+    load("cb_2018_06_tract_500.Rdata")
+    
+    int <- st_intersection(cb_2018_06_tract_500 %>%
+                             filter(STATEFP == "06") %>% 
+                             rmapshaper::ms_simplify(., keep = 0.01,
+                                                     keep_shapes = TRUE) %>% 
+                             mutate(TractArea =  st_area(geometry))
+                           ,  voronoiPolygon) %>%
+      mutate(HospTractArea =  st_area(geometry))
+    
+    load("CA_Data.RData")
+    
+    sum_St <- int %>% 
+      select(GEOID, NAME, FAC_NO, FAC_NAME
+             ,  HospArea, TOT_LIC_BEDS, IC_LIC_BEDS
+             ,TractArea, HospTractArea) %>%
+      mutate(pcntArea = HospTractArea / TractArea,
+             IC_LIC_BEDS = as.numeric(IC_LIC_BEDS)) %>%  st_drop_geometry() %>% #View()
+      left_join( S0101 %>% 
+                   select(GEOID = GEO.id2, HC01_EST_VC01, HC01_MOE_VC01) %>%  
+                   mutate_at(vars( HC01_EST_VC01, HC01_MOE_VC01),
+                             list(~as.numeric(.))) %>% 
+                   filter(!is.na(HC01_EST_VC01))
+      ) %>% 
+      mutate(tractPop = pcntArea*HC01_EST_VC01) %>% 
+      group_by(FAC_NO, FAC_NAME, TOT_LIC_BEDS, IC_LIC_BEDS) %>% 
+      summarise(popHosp = sum(tractPop)) %>% 
+      ungroup() %>% 
+      mutate(popHosp = as.numeric(popHosp),
+             TOT_LIC_BEDS = as.numeric(TOT_LIC_BEDS),
+             TotLicBed_over_pop = TOT_LIC_BEDS/popHosp
+             ,TotLicIcBd_over_pop = IC_LIC_BEDS/popHosp)
+    
+    colsToMap <- c("popHosp", "TOT_LIC_BEDS"
+                   ,"IC_LIC_BEDS", "TotLicBed_over_pop"
+                   ,"TotLicIcBd_over_pop")
+    
+    measures <- c("Population\nby Hospital",  "Total\nLicensed Beds"
+                  , "Total IC\nLicensed Beds", "Licensed Beds\nOver Population",
+                  "Licensed Beds IC\nOver Population")
+    
+    for (i in seq_along(measures)) {
+      
+      if( !i %in% c(4,5) ) {
+        
+        fillBreaks<- sum_St %>%
+          select(var = colsToMap[i]) %>%
+          .$var  %>% 
+          pretty(., 5)
+        
+        plot <- sum_St %>%
+          select(FAC_NO, var = colsToMap[i]) %>% 
+          left_join(int %>% 
+                      select(GEOID, FAC_NO)) %>% 
+          st_as_sf() %>% 
+          ggplot() +
+          geom_sf(aes(fill = var)
+                  ,  color = NA
+                  #,  show.legend = FALSE
+          ) + 
+          geom_sf(data = califCounties
+                  ,aes()
+                  ,fill = NA
+                  ,color = "black"
+                  ,alpha = 0
+                  ,size = .10) +
+          #scale_fill_viridis_c(trans = "sqrt", alpha = .7) +
+          scale_fill_gradient2(
+            name = measures[i] #"Population\nby Hospital"
+            ,low = "darkgreen",
+            mid = "#f1a340",
+            high = "darkred"
+            ,midpoint = median(fillBreaks)
+            ,breaks = as.integer(fillBreaks)
+            ,labels = human_numbers ) +
+          geo_theme
+        
+        
+      } else  {
+        
+        fillBreaks<- sum_St %>%
+          select(var = colsToMap[i]) %>%
+          .$var  %>% 
+          pretty(., 5)
+        
+        plot <- sum_St %>%
+          select(FAC_NO, var = colsToMap[i]) %>% 
+          left_join(int %>% 
+                      select(GEOID, FAC_NO)) %>% 
+          st_as_sf() %>% 
+          ggplot() +
+          geom_sf(aes(fill = var)
+                  ,  color = NA
+                  #,  show.legend = FALSE
+          ) +
+          geom_sf(data = califCounties
+                  ,aes()
+                  ,fill = NA
+                  ,color = "black"
+                  ,alpha = 0
+                  ,size = .10) +
+          #scale_fill_viridis_c(trans = "sqrt", alpha = .7) +
+          scale_fill_gradient2(
+            trans = "sqrt"
+            #alpha = .7
+            ,name = measures[i]
+            ,low = "darkgreen",
+            mid = "#f1a340",
+            high = "darkred"
+            ,limits = c(min(fillBreaks), max(fillBreaks))
+            ,midpoint = median(fillBreaks)
+            ,breaks = fillBreaks
+            ,labels = prettyFractions(fillBreaks)) +
+          geo_theme
+        
+      }
+      
+      print(plot)
+      
+    }
+    
+    View(US_CoronaVirus)
+    
+    US_CoronaVirus %>% 
+      group_by()
+    
+    st_centroid_within_poly <- function (poly) {
+      
+      # check if centroid is in polygon
+      centroid <- poly %>% st_centroid() 
+      in_poly <- st_within(centroid, poly, sparse = F)[[1]] 
+      
+      # if it is, return that centroid
+      if (in_poly) return(centroid) 
+      
+      # if not, calculate a point on the surface and return that
+      centroid_in_poly <- st_point_on_surface(poly) 
+      return(centroid_in_poly)
+    }
+    
   }
-  SP = SpatialPolygons(polys)
-  voronoi = SpatialPolygonsDataFrame(SP
-                                     ,data=data.frame(x=crds[,1], 
-                                                      y=crds[,2]
-                                                      ,row.names=sapply(slot(SP
-                                                                             ,  'polygons'), 
-                                                                        function(x) slot(x, 'ID'))))
-}
-
-voronoiPolygon <- voronoipolygons(sp::SpatialPoints(cbind(d$LONGITUDE,
-                                                          d$LATITUDE), 
-                                                    sp::CRS("+init=epsg:4269"))) %>% 
-  st_as_sf () %>% 
-  st_set_crs(4269) %>%
-  right_join(d, 
-             by = c("x" = "LONGITUDE"
-                    ,"y" = "LATITUDE")) %>% 
-  st_intersection(., st_union(califCounties)) %>% 
-  mutate(HospArea =  st_area(geometry))
-
-rm(list = setdiff(ls(), c("voronoiPolygon", "califCounties", 'hosp18', "data_Date")))
-gc()
-
-source("helperFunctions.r")
-
-load("cb_2018_06_tract_500.Rdata")
-
-int <- st_intersection(cb_2018_06_tract_500 %>%
-                         filter(STATEFP == "06") %>% 
-                         rmapshaper::ms_simplify(., keep = 0.01,
-                                                 keep_shapes = TRUE) %>% 
-                         mutate(TractArea =  st_area(geometry))
-                       ,  voronoiPolygon) %>%
-  mutate(HospTractArea =  st_area(geometry))
-
-load("CA_Data.RData")
-
-sum_St <- int %>% 
-  select(GEOID, NAME, FAC_NO, FAC_NAME
-         ,  HospArea, TOT_LIC_BEDS, IC_LIC_BEDS
-         ,TractArea, HospTractArea) %>%
-  mutate(pcntArea = HospTractArea / TractArea,
-         IC_LIC_BEDS = as.numeric(IC_LIC_BEDS)) %>%  st_drop_geometry() %>% #View()
-  left_join( S0101 %>% 
-               select(GEOID = GEO.id2, HC01_EST_VC01, HC01_MOE_VC01) %>% 
-               mutate_at(vars( HC01_EST_VC01, HC01_MOE_VC01),
-                         list(~as.numeric(.))) %>% 
-               filter(!is.na(HC01_EST_VC01))
-  ) %>% 
-  mutate(tractPop = pcntArea*HC01_EST_VC01) %>% 
-  group_by(FAC_NO, FAC_NAME, TOT_LIC_BEDS, IC_LIC_BEDS) %>% 
-  summarise(popHosp = sum(tractPop)) %>% 
-  ungroup() %>% 
-  mutate(popHosp = as.numeric(popHosp),
-         TOT_LIC_BEDS = as.numeric(TOT_LIC_BEDS),
-         TotLicBed_over_pop = TOT_LIC_BEDS/popHosp
-         ,TotLicIcBd_over_pop = IC_LIC_BEDS/popHosp)
-
-colsToMap <- c("popHosp", "TOT_LIC_BEDS"
-               ,"IC_LIC_BEDS", "TotLicBed_over_pop"
-               ,"TotLicIcBd_over_pop")
-
-measures <- c("Population\nby Hospital",  "Total\nLicensed Beds"
-              , "Total IC\nLicensed Beds", "Licensed Beds\nOver Population",
-              "Licensed Beds IC\nOver Population")
-
-for (i in seq_along(measures)) {
   
-  if( !i %in% c(4,5) ) {
+  if(FALSE) {
     
-    fillBreaks<- sum_St %>%
-      select(var = colsToMap[i]) %>%
-      .$var  %>% 
-      pretty(., 5)
-    
-    plot <- sum_St %>%
-      select(FAC_NO, var = colsToMap[i]) %>% 
-      left_join(int %>% 
-                  select(GEOID, FAC_NO)) %>% 
-      st_as_sf() %>% 
-      ggplot() +
-      geom_sf(aes(fill = var)
-              ,  color = NA
-              #,  show.legend = FALSE
-      ) +
-      geom_sf(data = califCounties
-              ,aes()
-              ,fill = NA
-              ,color = "black"
-              ,alpha = 0
-              ,size = .10) +
-      #scale_fill_viridis_c(trans = "sqrt", alpha = .7) +
-      scale_fill_gradient2(
-        name = measures[i] #"Population\nby Hospital"
-        ,low = "darkgreen",
-        mid = "#f1a340",
-        high = "darkred"
-        ,midpoint = median(fillBreaks)
-        ,breaks = as.integer(fillBreaks)
-        ,labels = human_numbers ) +
-      geo_theme
+    a3 <- califCounties  %>% 
+      mutate(lon = map_dbl(geometry, ~st_centroid_within_poly(.x)[[1]]),
+             lat = map_dbl(geometry, ~st_centroid_within_poly(.x)[[2]])) %>% 
+      st_drop_geometry()
     
     
-  } else  {
+    library(geosphere)
     
-    fillBreaks<- sum_St %>%
-      select(var = colsToMap[i]) %>%
-      .$var  %>% 
-      pretty(., 5)
+    bearing(c(10,10),c(20,20))
     
-    plot <- sum_St %>%
-      select(FAC_NO, var = colsToMap[i]) %>% 
-      left_join(int %>% 
-                  select(GEOID, FAC_NO)) %>% 
-      st_as_sf() %>% 
-      ggplot() +
-      geom_sf(aes(fill = var)
-              ,  color = NA
-              #,  show.legend = FALSE
-      ) +
-      geom_sf(data = califCounties
-              ,aes()
-              ,fill = NA
-              ,color = "black"
-              ,alpha = 0
-              ,size = .10) +
-      #scale_fill_viridis_c(trans = "sqrt", alpha = .7) +
-      scale_fill_gradient2(
-        trans = "sqrt"
-        #alpha = .7
-        ,name = measures[i]
-        ,low = "darkgreen",
-        mid = "#f1a340",
-        high = "darkred"
-        ,limits = c(min(fillBreaks), max(fillBreaks))
-        ,midpoint = median(fillBreaks)
-        ,breaks = fillBreaks
-        ,labels = prettyFractions(fillBreaks)) +
-      geo_theme
+    ggplot(data = califCounties) +
+      geom_sf() +
+      coord_sf(crs = "+proj=laea +lat_0=34 +lon_0=-118 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs ")
     
   }
   
-  print(plot)
-  
-}
-
-
-View(US_CoronaVirus)
-
-US_CoronaVirus %>% 
-  group_by()
-
-st_centroid_within_poly <- function (poly) {
-  
-  # check if centroid is in polygon
-  centroid <- poly %>% st_centroid() 
-  in_poly <- st_within(centroid, poly, sparse = F)[[1]] 
-  
-  # if it is, return that centroid
-  if (in_poly) return(centroid) 
-  
-  # if not, calculate a point on the surface and return that
-  centroid_in_poly <- st_point_on_surface(poly) 
-  return(centroid_in_poly)
-}
-
-}
-
-if(FALSE) {
-
-a3 <- califCounties  %>% 
-  mutate(lon = map_dbl(geometry, ~st_centroid_within_poly(.x)[[1]]),
-         lat = map_dbl(geometry, ~st_centroid_within_poly(.x)[[2]])) %>% 
-  st_drop_geometry()
-
-
-library(geosphere)
-
-bearing(c(10,10),c(20,20))
-
-
-
-ggplot(data = califCounties) +
-    geom_sf() +
-    coord_sf(crs = "+proj=laea +lat_0=34 +lon_0=-118 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +units=m +no_defs ")
-
 }
 
 dev.off()
 
 system(paste0('open "', paste0("2019H1N1_vs_COVID19_"
-                              ,data_Date %>% gsub("-","",.),".pdf"), '"'))
-
+                               ,data_Date %>% gsub("-","",.),".pdf"), '"'))
+  
 ```
