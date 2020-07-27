@@ -1614,8 +1614,8 @@ p +
        y = "",
        x = "",
        caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
-                        ,data_Date
-                        ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates, Table B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
+                       ,data_Date
+                       ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates,\nTable B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
   )
 
 # now by county near Los Angeles
@@ -1726,8 +1726,8 @@ p +
        y = "",
        x = "",
        caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
-                        ,data_Date
-                        ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates, Table B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
+                       ,data_Date
+                       ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates,\nTable B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
   )
 
 if(FALSE) {
