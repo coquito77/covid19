@@ -630,14 +630,14 @@ t_intr_estm %>%
                labels = pretty_date_breaks( seq(min(t_intr_estm$EndMonth), max(t_intr_estm$EndMonth), by = "1 month")
                                             ,format1 = "%Y %b", format2 = "%Y %b")
                #,limits = c(1900,2000), expand = c(0,0)
-  ) + 
+  ) +  
   facet_wrap(vars( X2009H1N1), scales = "free") +
   theme_plot +
   #theme(legend.position = "top") +
   labs(title = "2009 H1N1 (swine flu pandemic) cases, deaths, and hospitalizations"
        ,subtitle = "Interpolated counts from counts from Oct 2009 to March 2010
        The CDC provided middle, low and high, estimate counts for the categories below for
-each month from Oct 2019 to March 2010.
+each month from Oct 2009 to March 2010.
        Estimates starting from April 2009 (the beginning of the H1N1 pandemic) are not given,
 these were interpolated using spline estimation."
 ,y = "Estimated count"
@@ -687,7 +687,7 @@ t_intr_estm %>%
   labs(title = "2009 H1N1 (swine flu pandemic) cases, deaths, and hospitalizations"
        ,subtitle = "Interpolated counts from counts from Oct 2009 to March 2010
        The CDC provided middle, low and high, estimate counts for the categories below for 
-each month from Oct 2019 to March 2010.
+each month from Oct 2009 to March 2010.
        Estimates starting from April 2009 (the beginning of the H1N1 pandemic) are not given, 
 these were interpolated using spline estimation."
 ,y = "Estimated count"
@@ -834,7 +834,6 @@ sum_US_CoronaVirus %>%
                         ,"(Covid19);
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
-
 
 sum_US_CoronaVirus %>% 
   ggplot +
@@ -1309,7 +1308,7 @@ coronaChange %>%
             angle = 0, 
             size = 3 
             ,colour = "blue") +
-  geom_col(aes(x = dayCnt,  y = Cnt, 
+  geom_col(aes(x = dayCnt, y = Cnt, 
                fill = changeType), alpha = .8) +
   scale_y_continuous(label = human_numbers
                      ,expand = expansion(mult = c(0, .1))
@@ -1324,7 +1323,7 @@ coronaChange %>%
   #coord_cartesian(xlim = c(1, 336) #, ylim = c(0, 50000)
   # ) +
   theme_plot +
-  labs(title = "2009 H1N1 new cases by day vs Covid-19 deaths"
+  labs(title = "2009 H1N1 new cases by day vs Covid-19 cases"
        ,subtitle = "336 days after the first case
        Vertical blue lines are for reference and placed every two months
        after the frst case for each pandemic"
@@ -1335,7 +1334,6 @@ coronaChange %>%
                         ,"(Covid19);
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
-
 
 coronaChange %>% 
   bind_rows(H1N1Change) %>% 
@@ -1414,72 +1412,74 @@ calendarHeatmap(dates
                 , subtitle = ""
                 , legendtitle = "Deaths")
 
-# print ternd lines
+# print trend lines
 
-cntyList <- data.frame(county = c(6071,6059,6065, 6037),
-                       cntyLabel= c("San Bernardino",
-                                    "Orange","Riverside",
-                                    "Los Angeles")
-)
+countyTrends <- US_CoronaVirus %>% 
+  filter(grepl("^6071|^6059|^6065|^6037", fips)) %>% 
+  mutate(date = as.Date(date)) %>% 
+  arrange(fips, date) %>% 
+  group_by(fips, county) %>% 
+  mutate(newCases = lag(cases),
+         newCases = cases - newCases) %>% 
+  ungroup() %>% 
+  as.data.table() %>% 
+  .[, rollingMean07Day := frollmean(newCases, 7, na.rm = T), by = fips] %>%
+  .[, rollingMean14Day := frollmean(newCases, 14, na.rm = T), by = fips] %>%
+  pivot_longer(-c(date, county, state, fips), names_to = "variable", values_to = "count")
 
-for(i in seq_along(cntyList$county) ) {
-  
-  dat <- US_CoronaVirus %>% 
-    filter(fips == cntyList$county[i]) %>% 
-    mutate(date = as.Date(date)) %>% 
-    arrange(fips, date) %>% 
-    group_by(fips, county) %>% 
-    mutate(newCases = lag(cases),
-           newCases = cases - newCases) %>% 
-    ungroup() %>% 
-    as.data.table() %>% 
-    .[, rollingMean07Day := frollmean(.[, newCases], 7) ] %>%
-    .[, rollingMean14Day := frollmean(.[, newCases], 14) ] %>%
-    select(date, county, newCases, contains("rolling")) %>%
-    pivot_longer(-c(date, county), names_to = "cat", values_to = "count") %>% 
-    mutate(count = round(count, 0))
-  
-  maxRollingValues <- dat %>% 
-    filter(cat != "newCases") %>% 
-    group_by(cat) %>% 
-    filter(date == max(date)) %>% 
-    ungroup
-  
-  gPlot <- ggplot() +
-    geom_col(data = dat %>% 
-               filter(cat == "newCases"),
-             aes(x = date, y = count )) +
-    geom_line(data = dat %>% 
-                filter(cat != "newCases"),
-              aes(x = date, y = count
-                  ,color = cat)
-    ) +
-    geom_text(data = dat %>% 
-                filter(cat == "newCases")
-              ,aes(x = date, y = count, label = scales::comma(count, accuracy = 1)),
-              size = 3,alpha = .8) +
-    geom_point(data = maxRollingValues,
-               aes(x = date, y = count
-                   ,color = cat )
-               ,alpha = .8
-    ) +
-    geom_text(data = maxRollingValues 
-              ,aes(x = date, y = count, color = cat
-                   ,label = scales::comma(count, accuracy = 1)),
-              size = 3, show.legend = FALSE
-              ,alpha = .8) +
-    labs(title = maxRollingValues[1,2]
-         ,subtitle = "New cases, rolling average 7 and 14 days"
-         ,y = "Cases"
-         ,x = ""
-         ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
-                          ,data_Date
-                          ,"(Covid19)")
-    )
-  
-  print(gPlot)
-  
-}
+maxRollingValues <- countyTrends %>% 
+  group_by(fips, variable) %>% 
+  filter(date == max(date)) %>% 
+  ungroup
+
+ggplot() +
+  geom_col(data = countyTrends %>% 
+             filter(variable == "newCases"),
+           aes(x = date, y = count )) +
+  geom_line(data = countyTrends %>% 
+              filter(grepl("rollingMean",variable)),
+            aes(x = date, y = count
+                ,color = variable)
+  ) +
+  facet_wrap(~county) + 
+  scale_x_date(expand = expansion(mult = c(.1, .2))) +
+  # geom_text(data = dat %>% 
+  #             filter(cat == "newCases")
+  #           ,aes(x = date, y = count, label = scales::comma(count, accuracy = 1)),
+  #           size = 3,alpha = .8) +
+  geom_point(data = maxRollingValues %>% 
+               filter(grepl("rollingMean",variable)),
+             aes(x = date, y = count
+                 ,color = variable )
+             ,alpha = .8
+  ) +
+  ggrepel::geom_text_repel(data = maxRollingValues %>% 
+                             filter(grepl("rollingMean",variable)) %>% 
+                             mutate(label = scales::comma(count, accuracy = 1))
+                           ,aes(x =  date #+ 20
+                                , y = count,
+                                color = variable,
+                                label = label
+                           )
+                           ,show.legend = FALSE,
+                           size = 3,
+                           force             = 0.5,
+                           nudge_x           = 0.15,
+                           hjust             = -1,
+                           segment.size  = 0.2,
+                           segment.color = "grey50",
+                           direction     = "y"
+  ) +
+  scale_colour_manual(values = c("rollingMean07Day" = "darkgoldenrod4", "rollingMean14Day" = "seagreen")) +
+  theme_plot +
+  labs(title = "Rates by Counties"
+       ,subtitle = "New cases, 7 and 14 days rolling average "
+       ,y = "Cases"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19)")
+  )
 
 
 countyPop <- counties_2018acs %>% 
@@ -1494,7 +1494,7 @@ countyPop <- counties_2018acs %>%
               mutate( fips = str_pad(fips, 2, pad = "0"))
   ) %>% 
   mutate(casesPer1K = (cases/st_pop ) * 1000,
-         casesPer1K = round(casesPer1K, 0),
+         #casesPer1K = round(casesPer1K, 0),
          date = as.Date(date)) %>% 
   left_join(data.frame(state = state.name,
                        state_region = state.region,
@@ -1588,12 +1588,16 @@ p +
                              semi_join( max_region %>% 
                                           select( fips,
                                                   state)
-                             )
+                             ) %>% 
+                             droplevels() %>% 
+                             mutate(label = paste0(state_abb
+                                                   ," ", scales::comma(casesPer1K, accuracy = 0.1)
+                                                   ," or "
+                                                   ,prettyFractions(casesPer1K/1000)))
                            ,aes(x =  date #+ 20
                                 , y = casesPer1K,
                                 color = state1,
-                                label = paste(state_abb,scales::comma(casesPer1K)
-                                )
+                                label = label
                            )
                            ,show.legend = FALSE,
                            size = 3,
@@ -1604,10 +1608,15 @@ p +
                            segment.color = "grey50",
                            direction     = "y"
   ) +
+  theme_plot +
   labs(title = "Cummulative cases per 1k persons by state region",
        subtitle = "the four highest states by region are highlighted",
        y = "",
-       x = "")
+       x = "",
+       caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates, Table B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
+  )
 
 # now by county near Los Angeles
 
@@ -1625,13 +1634,29 @@ CalifCounties <- US_CoronaVirus %>%
                 filter(grepl("California", NAME))
   ) %>% 
   mutate(casesPer1K = (cases/estimate )* 1000,
-         casesPer1K = round(casesPer1K, 0),
+         #casesPer1K = round(casesPer1K, 0),
          date = as.Date(date)) %>% 
   left_join(Ca_abbv_counties %>% 
-              select(county  = COUNTY, ABBREV)
+              select(county = COUNTY, ABBREV)
   )
 
-selectedCounties <- "Ventura|Santa Barbara|San Francisco|San Bernardino|Riverside|Kern|Imperial|San Diego|Orange|Los Angeles|Kings|Tulare|Marin"
+selectedCounties <-CalifCounties %>% 
+  group_by(fips) %>% 
+  filter(date == max(date)) %>% 
+  arrange(desc(casesPer1K)) %>% 
+  .$county %>% .[1:grep("^Riverside", .)] %>% 
+  c("Ventura","Santa Barbara","San Francisco","San Bernardino","Riverside","Kern","Imperial","San Diego","Orange","Los Angeles","Kings","Tulare","Marin") %>% 
+  unique %>% sort %>%
+  paste0(., collapse = "|")
+
+cntCouties <- selectedCounties %>% 
+  strsplit(.,"\\|") %>% 
+  unlist %>% 
+  length()
+
+getPalette <- colorRampPalette(RColorBrewer::brewer.pal( cntCouties, "Set1"))
+
+lcols <- getPalette(cntCouties) %>% sub("#FFF52F", "#5e3c99", .)
 
 p <- ggplot() +
   geom_line(data = CalifCounties
@@ -1665,23 +1690,28 @@ p <- ggplot() +
   scale_y_continuous(#label = human_numbers,
     expand = expansion(mult = c(0, .1))
   ) +
-  scale_colour_brewer(
-    palette = "Paired",
-    direction = 1,
-    aesthetics = "colour"
-  )
+  scale_color_manual(values = lcols )
+# scale_colour_brewer(
+#   palette = "Paired",
+#   direction = 1,
+#   aesthetics = "colour"
+# )
 
 p +
   ggrepel::geom_text_repel(data = CalifCounties %>% 
                              filter(grepl(selectedCounties, county )) %>% 
-                             filter(date == max(date) )
+                             filter(date == max(date) ) %>% 
+                             droplevels() %>% 
+                             mutate(label = paste0(ABBREV
+                                                   ," ", scales::comma(casesPer1K, accuracy = 0.1)
+                                                   ," or "
+                                                   ,prettyFractions(casesPer1K/1000)))
                            ,aes(x =  date #+ 20
                                 , y = casesPer1K,
                                 color = county,
-                                label = paste(ABBREV
-                                              ,scales::comma(casesPer1K)
-                                )
+                                label = label
                            )
+                           
                            ,show.legend = FALSE,
                            size = 3,
                            force             = 0.5,
@@ -1694,7 +1724,11 @@ p +
   labs(title = "Cummulative cases per 1k persons for California counties",
        subtitle = "selected counties highlighted",
        y = "",
-       x = "")
+       x = "",
+       caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates, Table B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
+  )
 
 if(FALSE) {
   
@@ -2030,5 +2064,5 @@ dev.off()
 
 system(paste0('open "', paste0("2019H1N1_vs_COVID19_"
                                ,data_Date %>% gsub("-","",.),".pdf"), '"'))
-  
+
 ```
