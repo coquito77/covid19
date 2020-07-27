@@ -257,9 +257,14 @@ human_numbers <- function(x = NULL, smbl ="", signif = 2){
 theme_plot <- theme_bw() + # based on ggthemes::theme_wsj
     #theme( # colorhex title_family element_line el, elname)
         theme(line = element_line(linetype = 1, colour = "black"), 
-              panel.border = element_blank(), # element_rect(linetype = 1, fill = NA
-                                          #,size = .5),
-              strip.background = element_blank(),
+              #strip.background = element_blank(),
+              strip.background = element_rect(colour = NA,
+                                              fill = "blue"), # element_blank(),
+              strip.text.x = element_text(size = 10,
+                                          colour = "white",
+                                          angle = 00,
+                                          hjust = 0 #, lineheight = .5 LegendTitle lcols district
+              ),
               panel.spacing.x = unit(.01, "npc"),
               # axis.title.y.right = element_blank(),                # hide right axis title
               # axis.text.y.right = element_blank(),                 # hide right axis labels
