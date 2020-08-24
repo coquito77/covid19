@@ -42,20 +42,18 @@ When you click the **Knit** button a document will be generated that includes bo
 
 ```{r getData, eval = FALSE}
 
+
+# get cdc estimates from H1N1
+#
 linkEstimates <- "https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm/" %>%
   read_html() %>%
   html_nodes("a") %>%
   html_attr("href") %>%
   .[grepl("estimates", .)] %>%
-  paste0("https://www.cdc.gov", .) %>% # t %>%
-  read_html() %>%
-  html_nodes("a") %>%
-  html_attr("href") %>%
-  .[grepl("estimates", ., ignore.case = TRUE)] %>%
   sapply(., function(x)
     case_when(
       grepl("h1n1flu", x, ignore.case = TRUE) ~ paste0("https://www.cdc.gov", x),
-      TRUE ~  paste0("https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm/", x)
+      TRUE ~  paste0("https://www.cdc.gov/h1n1flu/", x)
     )) %>%
   as.list() %>%
   as.character()
@@ -71,7 +69,7 @@ for (i in seq_along(linkEstimates)) {
   print(paste0(
     i,
     " of "
-   ,    length(linkEstimates)
+    ,    length(linkEstimates)
     ," -- ",as.double(timediff, units = "auto") %>% signif(.,3)
     ," "
     ,units(timediff)
@@ -93,7 +91,7 @@ for (i in seq_along(linkEstimates)) {
     separate(EstimatedRange, c("lowEst", "highEst"), "to", extra = "merge") %>% 
     filter(!is.na(type)) %>% 
     pivot_longer(-c(X2009H1N1,type)
-                ,  names_to = "metric", values_to = "value") %>% 
+                 ,  names_to = "metric", values_to = "value") %>% 
     mutate(Valuenum =  gsub("[^[:digit:].]", "", value),
            Valuenum = as.numeric(Valuenum),
            Valuenum  = case_when(grepl("million", value)  ~ Valuenum * 1e6,
@@ -103,9 +101,11 @@ for (i in seq_along(linkEstimates)) {
 }
 
 cdc_estimates <- data_ %>% # head(1000) %>% # "541/541 2.3 mins"
-  plyr::ldply(data.frame)
+  plyr::ldply(data.frame) %>% 
+  filter(!is.na(Valuenum))
 
 save(cdc_estimates, file = "cdc_estimates.RData")
+
 
 # get hospital data from the state
 
