@@ -22,3 +22,5 @@ $RECYCLE.BIN/
 *.zip
 *.rproj
 *.rdata
+*.pdf
+*.Rhistory

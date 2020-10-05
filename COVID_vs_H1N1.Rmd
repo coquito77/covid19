@@ -499,6 +499,10 @@ if( !exists("US_CoronaVirus")) {
   
   source('~/GitHub/covid19/covid19DataNYTimes.R')
   
+  saveRDS(US_CoronaVirus
+          , paste0("US_CoronaVirus_",Sys.Date() %>% gsub("-","_",.), ".rds")
+  )
+  
 }
 
 source("helperFunctions.r")
@@ -555,7 +559,6 @@ if( file.exists( paste0("2019H1N1_vs_COVID19_"
   unlink( paste0("2019H1N1_vs_COVID19_"
                  ,data_Date %>% gsub("-","",.),".pdf")
   )
-
 
 Cairo::CairoPDF(file = paste0("2019H1N1_vs_COVID19_"
                               ,data_Date %>% gsub("-","",.),".pdf"),
@@ -1482,6 +1485,160 @@ ggplot() +
   )
 
 
+# new cases per population
+
+ggplot() +
+  geom_rect(data = countyTrends %>% 
+              filter(grepl("rollingMean",variable)) %>% 
+              # filter(fips == "6037") %>% 
+              left_join( counties_2018acs %>% filter(variable == "B01003_001") %>%
+                           select(fips  =GEOID, estimate) %>% 
+                           mutate(fips = as.numeric(fips))
+              ) %>% 
+              mutate(count = replace_na(count, 0),
+                     casesPer100K = (count/estimate ) * 100000) %>% 
+              select(-c(count, estimate)) %>% 
+              group_by(fips) %>% 
+              pivot_wider(names_from = variable, values_from = casesPer100K) %>% 
+              mutate(diff_07Day_mns_14day = rollingMean07Day - rollingMean14Day,
+                     previusDay = lag( date, order_by = date )) %>% 
+              ungroup
+            , aes(xmin = previusDay, xmax = date
+                  , ymin = -Inf, ymax = Inf
+                  , fill = diff_07Day_mns_14day),
+            alpha = 0.75, colour = NA) +
+  scale_fill_distiller(name = "Difference between\n7 and 14 days rolling average"
+                       ,palette = "Spectral") +
+  geom_line(data = countyTrends %>% 
+              filter(grepl("rollingMean",variable)) %>% 
+              left_join( counties_2018acs %>% filter(variable == "B01003_001") %>%
+                           select(fips = GEOID, estimate) %>% 
+                           mutate(fips = as.numeric(fips))
+              ) %>% 
+              mutate(count = replace_na(count, 0),
+                     casesPer100K = (count/estimate ) * 100000),
+            aes(x = date, y = casesPer100K
+                ,color = variable)
+  ) +
+  facet_wrap(~county) + 
+  scale_x_date(expand = expansion(mult = c(.1, .2))) +
+  scale_colour_manual(name = "Rolling Average",
+                      labels = c("7-day","14-day"),
+                      values = c("rollingMean07Day" = "darkgoldenrod4", "rollingMean14Day" = "seagreen")) +
+  theme_plot +
+  geom_point(data = countyTrends %>% 
+               filter(grepl("rollingMean",variable)) %>% 
+               group_by(fips, variable) %>% 
+               filter(date == max(date)) %>% 
+               ungroup %>%
+               left_join( counties_2018acs %>%
+                            filter(variable == "B01003_001") %>%
+                            select(fips = GEOID, estimate) %>% 
+                            mutate(fips = as.numeric(fips))
+               ) %>% 
+               mutate(count = replace_na(count, 0),
+                      casesPer100K = (count/estimate ) * 100000)
+             ,
+             aes(x = date, y = casesPer100K
+                 ,color = variable )
+             ,alpha = .8
+  ) +
+  ggrepel::geom_text_repel(data = countyTrends %>% 
+                             filter(grepl("rollingMean",variable)) %>% 
+                             group_by(fips, variable) %>% 
+                             filter(date == max(date)) %>% 
+                             ungroup %>%
+                             left_join( counties_2018acs %>% 
+                                          filter(variable == "B01003_001") %>% 
+                                          select(fips  =GEOID, estimate) %>% 
+                                          mutate(fips = as.numeric(fips))
+                             ) %>% 
+                             mutate(count = replace_na(count, 0),
+                                    casesPer100K = (count/estimate ) * 100000)
+                           
+                           # mutate(label = scales::comma(count, accuracy = 1))
+                           ,aes(x =  date #+ 20
+                                , y = casesPer100K,
+                                color = variable,
+                                label = paste0(scales::comma(casesPer100K, accuracy = 0.1)
+                                               ," or ",
+                                               prettyFractions(casesPer100K/100000))
+                           )
+                           ,show.legend = FALSE,
+                           size = 3,
+                           force             = 0.5,
+                           nudge_x           = 0.15,
+                           hjust             = -1,
+                           segment.size  = 0.2,
+                           segment.color = "grey50",
+                           direction     = "y"
+  ) +
+  labs(title = "Rates by Counties by 100K population"
+       ,subtitle = "New cases, 7 and 14 days rolling average "
+       ,y = "Cases"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19)")
+  )
+
+if(FALSE) {
+  
+  library(benford.analysis) 
+  
+  bfd.cp <- countyTrends %>% 
+    filter(grepl("cases",variable)) %>% 
+    filter(fips == "6037") %>% 
+    .$count %>% 
+    benford(.)
+  
+  bfd.cp$stats$chisq$p.value
+  
+  start_time = Sys.time()
+  
+  doExpectedValues = function(sel_name) {
+    
+    print(sel_name)
+    
+    bfd.cp <- US_CoronaVirus %>% 
+      filter(fips == sel_name ) %>% 
+      .$cases %>% 
+      benford(.)
+    
+    bfd.cp$stats$chisq %>% unlist %>% enframe %>% 
+      mutate(fips = sel_name)
+    
+  }
+  
+  testdataExpected <- lapply(US_CoronaVirus$fips %>% .[!is.na(.)] %>% 
+                               unique, doExpectedValues)
+  
+  Category_names <- unique(US_CoronaVirus$fips %>% .[!is.na(.)] %>% 
+                             unique)
+  
+  Sys.time() - start_time # Time difference of 1.163981 mins
+  
+  bfd.cp_p_vals <- testdataExpected %>% 
+    data.table::rbindlist(., fill = TRUE, idcol= "iteration") %>% 
+    left_join( US_CoronaVirus %>% 
+                 distinct(county, state, fips))  %>% 
+    filter(grepl("p.valu", name)) %>% 
+    select(value :state) %>% 
+    mutate(five_pcnt = ifelse(value <=.05,"Less_Or_equal_.05","over _.05")) %>% 
+    .[,  state_cnty := .N, by = state] %>% 
+    .[,  cnty_type := .N, by = c("five_pcnt", "state")] %>% 
+    distinct(state, five_pcnt, state_cnty, cnty_type) %>% 
+    mutate(state_countyTypes = cnty_type/state_cnty) %>% 
+    select(state , state_cnty, five_pcnt, state_countyTypes) %>% 
+    pivot_wider(names_from = five_pcnt, values_from = state_countyTypes) %>% 
+    arrange(state) %>% 
+    mutate(state_rank = row_number(Less_Or_equal_.05),
+           state_rank = nrow(.) - state_rank) %>% 
+    arrange(state_rank)
+  
+}
+
+
 countyPop <- counties_2018acs %>% 
   filter(variable == "B01003_001") %>% 
   #head(500) %>% 
@@ -1569,7 +1726,7 @@ p <- ggplot() +
              , shape = 21
              , alpha = .5
              ,show.legend = FALSE) +
-  scale_x_date(expand = expansion(mult = c(.1, .2))) +
+  scale_x_date(expand = expansion(mult = c(.1, .3))) +
   scale_y_continuous(#label = human_numbers,
     expand = expansion(mult = c(0, .1))
   ) +
@@ -1618,7 +1775,151 @@ p +
                        ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates,\nTable B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
   )
 
-# now by county near Los Angeles
+# daily cases by state region
+
+countyPop <- counties_2018acs %>% 
+  filter(variable == "B01003_001") %>% 
+  #head(500) %>% 
+  mutate(state = sub('.*,', '', NAME),
+         state = trimws(state),
+         fips = substr(GEOID, start = 1, stop = 2) ) %>% 
+  group_by(state, fips) %>% 
+  summarize(st_pop = sum(estimate, na.rm = TRUE)) %>% 
+  full_join( US_StCoronaVirus %>% 
+               mutate( fips = str_pad(fips, 2, pad = "0")) %>% 
+               group_by(state ) %>% 
+               mutate( dailyCases = cases - lag(cases, order_by = date ))
+  ) %>% 
+  ungroup %>% 
+  as.data.table() %>% 
+  .[, rollingMean07Day := frollmean(dailyCases, 7, na.rm = T), by = fips] %>%
+  .[, rollingMean14Day := frollmean(dailyCases, 14, na.rm = T), by = fips] %>% 
+  mutate(dailyRolling7Day = (rollingMean07Day/st_pop ) * 100000,
+         #casesPer1K = round(casesPer1K, 0),
+         date = as.Date(date)) %>% 
+  left_join(data.frame(state = state.name,
+                       state_region = state.region,
+                       state_abb = state.abb)
+  )
+
+max_region <- countyPop %>% 
+  group_by(fips) %>%
+  arrange(desc(date)) %>% 
+  slice(1) %>% 
+  ungroup() %>% 
+  group_by(state_region) %>%
+  arrange(desc(dailyRolling7Day)) %>% 
+  slice(1:4) %>% 
+  ungroup() %>% 
+  filter(!is.na(state_abb))
+
+# RColorBrewer::display.brewer.all()
+
+mycolors <- colorRampPalette(RColorBrewer::brewer.pal(8, "Accent"))(length(unique(max_region$state))) %>% 
+  sub("#FEF295", "#31a354",.)
+
+p <- ggplot() +
+  geom_line(data = countyPop %>% 
+              select( fips,
+                      date,
+                      state1 = state,
+                      state_region,
+                      dailyRolling7Day) %>% 
+              filter(!is.na(state_region))
+            ,aes(x =  date
+                 , y = dailyRolling7Day,
+                 group = state1)
+            , color = "grey"
+            ,alpha = .5
+            ,show.legend = FALSE) +
+  facet_wrap(~ state_region
+             ,scales = "fixed") +
+  geom_line(data = countyPop %>% 
+              select( fips,
+                      date,
+                      state1 = state,
+                      state_region,
+                      dailyRolling7Day) %>% 
+              filter(!is.na(state_region)) %>% 
+              semi_join( max_region %>% 
+                           select( fips,
+                                   state)
+              )
+            ,aes(x =  date
+                 , y = dailyRolling7Day,
+                 color = state1),
+            ,alpha = .8
+            ,show.legend = FALSE) +
+  geom_point(data = countyPop %>% 
+               select( fips,
+                       date,
+                       state1 = state,
+                       state_region,
+                       dailyRolling7Day) %>%
+               filter(date == max(date) ) %>% 
+               filter(!is.na(state_region)) %>% 
+               semi_join( max_region %>% 
+                            select( fips,
+                                    state)
+               )
+             ,aes(x =  date
+                  , y = dailyRolling7Day,
+                  color = state1),
+             , size = 1
+             , stroke = .03
+             , shape = 21
+             , alpha = .5
+             ,show.legend = FALSE) +
+  scale_x_date(expand = expansion(mult = c(.1, .3))) +
+  scale_y_continuous(#label = human_numbers,
+    expand = expansion(mult = c(0, .1))
+  ) +
+  scale_color_manual(values = mycolors)
+
+p +
+  ggrepel::geom_text_repel(data = countyPop %>% 
+                             select( fips,
+                                     date,
+                                     state1 = state,
+                                     state_region,
+                                     dailyRolling7Day,
+                                     state_abb) %>%
+                             filter(date == max(date) ) %>% 
+                             filter(!is.na(state_region)) %>% 
+                             semi_join( max_region %>% 
+                                          select( fips,
+                                                  state)
+                             ) %>% 
+                             droplevels() %>% 
+                             mutate(label = paste0(state_abb
+                                                   ," ", scales::comma(dailyRolling7Day, accuracy = 0.1)
+                                                   ," or "
+                                                   ,prettyFractions(dailyRolling7Day/100000)))
+                           ,aes(x =  date #+ 20
+                                , y = dailyRolling7Day,
+                                color = state1,
+                                label = label
+                           )
+                           ,show.legend = FALSE,
+                           size = 3,
+                           force             = 0.5,
+                           nudge_x           = 0.15,
+                           hjust             = -1,
+                           segment.size  = 0.2,
+                           segment.color = "grey50",
+                           direction     = "y"
+  ) +
+  theme_plot +
+  labs(title = "7-day rolling average of daily cases per 100k persons by state region",
+       subtitle = "the four highest states by region are highlighted",
+       y = "",
+       x = "",
+       caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                       ,data_Date
+                       ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates,\nTable B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
+  )
+
+# now all Calif counties
 
 Ca_abbv_counties <- "https://sv08data.dot.ca.gov/contractcost/map.html" %>%
   xml2::read_html() %>%
@@ -1640,7 +1941,7 @@ CalifCounties <- US_CoronaVirus %>%
               select(county = COUNTY, ABBREV)
   )
 
-selectedCounties <-CalifCounties %>% 
+selectedCounties <- CalifCounties %>% 
   group_by(fips) %>% 
   filter(date == max(date)) %>% 
   arrange(desc(casesPer1K)) %>% 
@@ -1686,16 +1987,11 @@ p <- ggplot() +
              , shape = 21
              , alpha = .5
              ,show.legend = FALSE) +
-  scale_x_date(expand = expansion(mult = c(.1, .2))) +
+  scale_x_date(expand = expansion(mult = c(.1, .3))) +
   scale_y_continuous(#label = human_numbers,
     expand = expansion(mult = c(0, .1))
   ) +
   scale_color_manual(values = lcols )
-# scale_colour_brewer(
-#   palette = "Paired",
-#   direction = 1,
-#   aesthetics = "colour"
-# )
 
 p +
   ggrepel::geom_text_repel(data = CalifCounties %>% 
@@ -1729,6 +2025,112 @@ p +
                        ,data_Date
                        ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates,\nTable B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
   )
+
+# calif 7-da7 rollling avg new cases
+
+CalifCounties <- US_CoronaVirus %>% 
+  filter(state == "California") %>% 
+  mutate(GEOID = str_pad(fips, 5, pad = "0")) %>% 
+  group_by(fips ) %>% 
+  mutate( dailyCases = cases - lag(cases, order_by = date )) %>% 
+  as.data.table() %>% 
+  .[, rollingMean07Day := frollmean(dailyCases, 7, na.rm = T), by = fips] %>%
+  .[, rollingMean14Day := frollmean(dailyCases, 14, na.rm = T), by = fips] %>% 
+  inner_join( counties_2018acs %>% 
+                filter(variable == "B01003_001") %>% 
+                filter(grepl("California", NAME))
+  ) %>% 
+  mutate(dailyRolling7Day = (rollingMean07Day/estimate )* 100000,
+         date = as.Date(date)) %>% 
+  left_join(Ca_abbv_counties %>% 
+              select(county = COUNTY, ABBREV)
+  )
+
+selectedCounties <- CalifCounties %>% 
+  group_by(fips) %>% 
+  filter(date == max(date)) %>% 
+  arrange(desc(dailyRolling7Day)) %>% 
+  .$county %>% .[1:grep("^Riverside", .)] %>% 
+  c("Ventura","Santa Barbara","San Francisco","San Bernardino","Riverside","Kern","Imperial","San Diego","Orange","Los Angeles","Kings","Tulare","Marin") %>% 
+  unique %>% sort %>%
+  paste0(., collapse = "|")
+
+cntCouties <- selectedCounties %>% 
+  strsplit(.,"\\|") %>% 
+  unlist %>% 
+  length()
+
+getPalette <- colorRampPalette(RColorBrewer::brewer.pal( cntCouties, "Set1"))
+
+lcols <- getPalette(cntCouties) %>% sub("#FFF52F", "#5e3c99", .)
+
+p <- ggplot() +
+  geom_line(data = CalifCounties
+            ,aes(x =  date
+                 , y = dailyRolling7Day,
+                 group = county)
+            , color = "grey"
+            ,alpha = .5
+            ,show.legend = FALSE) +
+  geom_line(data = CalifCounties %>% 
+              filter(grepl(selectedCounties
+                           , county ))
+            ,aes(x =  date
+                 , y = dailyRolling7Day,
+                 color = county),
+            ,alpha = .8
+            ,show.legend = FALSE) +
+  geom_point(data = CalifCounties %>% 
+               filter(grepl(selectedCounties
+                            , county ))  %>% 
+               filter(date == max(date) )
+             ,aes(x =  date
+                  , y = dailyRolling7Day,
+                  color = county),
+             , size = 1
+             , stroke = .1
+             , shape = 21
+             , alpha = .5
+             ,show.legend = FALSE) +
+  scale_x_date(expand = expansion(mult = c(.1, .3))) +
+  scale_y_continuous(#label = human_numbers,
+    expand = expansion(mult = c(0, .1))
+  ) +
+  scale_color_manual(values = lcols )
+
+p +
+  ggrepel::geom_text_repel(data = CalifCounties %>% 
+                             filter(grepl(selectedCounties, county )) %>% 
+                             filter(date == max(date) ) %>% 
+                             droplevels() %>% 
+                             mutate(label = paste0(ABBREV
+                                                   ," ", scales::comma(dailyRolling7Day, accuracy = 0.1)
+                                                   ," or "
+                                                   ,prettyFractions(dailyRolling7Day/100000)))
+                           ,aes(x =  date #+ 20
+                                , y = dailyRolling7Day,
+                                color = county,
+                                label = label
+                           )
+                           ,show.legend = FALSE,
+                           size = 3,
+                           force             = 0.5,
+                           nudge_x           = 0.15,
+                           hjust             = -1,
+                           segment.size  = 0.2,
+                           segment.color = "grey50",
+                           direction     = "y"
+  ) +
+  labs(title = "Cummulative cases per 1k persons for California counties",
+       subtitle = "selected counties highlighted",
+       y = "",
+       x = "",
+       caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                       ,data_Date
+                       ,"(Covid19)\nU.S. Census Bureau; American Community Survey, 2014-2018 5-year Estimates,\nTable B01003_001 TOTAL POPULATION; generated with tidycensus R package.")
+  )
+
+
 
 if(FALSE) {
   
