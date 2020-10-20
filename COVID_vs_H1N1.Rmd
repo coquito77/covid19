@@ -1444,7 +1444,7 @@ ggplot() +
             aes(x = date, y = count
                 ,color = variable)
   ) +
-  facet_wrap(~county) + 
+  facet_wrap(~county, ncol = 1) + 
   scale_x_date(expand = expansion(mult = c(.1, .2))) +
   # geom_text(data = dat %>% 
   #             filter(cat == "newCases")
@@ -1484,29 +1484,34 @@ ggplot() +
                         ,"(Covid19)")
   )
 
+# new cases per population
 
 # new cases per population
 
+newCasesCounties <- countyTrends %>% 
+  filter(grepl("rollingMean",variable)) %>% 
+  # filter(fips == "6037") %>% 
+  left_join( counties_2018acs %>% filter(variable == "B01003_001") %>%
+               select(fips  =GEOID, estimate) %>% 
+               mutate(fips = as.numeric(fips))
+  ) %>% 
+  mutate(count = replace_na(count, 0),
+         casesPer100K = (count/estimate ) * 100000) %>% 
+  select(-c(count, estimate)) %>% 
+  group_by(fips) %>% 
+  pivot_wider(names_from = variable, values_from = casesPer100K) %>% 
+  mutate(diff_07Day_mns_14day = rollingMean07Day - rollingMean14Day,
+         previusDay = lag( date, order_by = date )) %>% 
+  ungroup
+
 ggplot() +
-  geom_rect(data = countyTrends %>% 
-              filter(grepl("rollingMean",variable)) %>% 
-              # filter(fips == "6037") %>% 
-              left_join( counties_2018acs %>% filter(variable == "B01003_001") %>%
-                           select(fips  =GEOID, estimate) %>% 
-                           mutate(fips = as.numeric(fips))
-              ) %>% 
-              mutate(count = replace_na(count, 0),
-                     casesPer100K = (count/estimate ) * 100000) %>% 
-              select(-c(count, estimate)) %>% 
-              group_by(fips) %>% 
-              pivot_wider(names_from = variable, values_from = casesPer100K) %>% 
-              mutate(diff_07Day_mns_14day = rollingMean07Day - rollingMean14Day,
-                     previusDay = lag( date, order_by = date )) %>% 
-              ungroup
+  geom_rect(data = newCasesCounties
             , aes(xmin = previusDay, xmax = date
                   , ymin = -Inf, ymax = Inf
                   , fill = diff_07Day_mns_14day),
-            alpha = 0.75, colour = NA) +
+            alpha = scales::rescale(newCasesCounties$diff_07Day_mns_14day) # 0.75
+            , colour = NA
+  ) +
   scale_fill_distiller(name = "Difference between\n7 and 14 days rolling average"
                        ,palette = "Spectral") +
   geom_line(data = countyTrends %>% 
@@ -1520,7 +1525,7 @@ ggplot() +
             aes(x = date, y = casesPer100K
                 ,color = variable)
   ) +
-  facet_wrap(~county) + 
+  facet_wrap(~county, ncol = 1) + 
   scale_x_date(expand = expansion(mult = c(.1, .2))) +
   scale_colour_manual(name = "Rolling Average",
                       labels = c("7-day","14-day"),
@@ -2121,7 +2126,7 @@ p +
                            segment.color = "grey50",
                            direction     = "y"
   ) +
-  labs(title = "Cummulative cases per 1k persons for California counties",
+  labs(title = "7-day rolling average of daily cases per 100k persons by California counties",
        subtitle = "selected counties highlighted",
        y = "",
        x = "",
