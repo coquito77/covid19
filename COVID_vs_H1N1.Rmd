@@ -346,7 +346,7 @@ iliList <- iliList_ %>%
   as.character() %>% 
   .[grepl("Weekly",.)]
 
-wklyCnts_  <- list()
+wklyCnts_ <- list()
 
 startTime <- Sys.time() # start timer
 
@@ -357,7 +357,7 @@ for (i in seq_along(iliList)) {
   print(paste0(
     i,
     " of "
-   ,    length(iliList)
+    ,    length(iliList)
     ," -- ",as.double(timediff, units = "auto") %>% signif(.,3)
     ," "
     ,units(timediff)
@@ -380,7 +380,7 @@ for (i in seq_along(iliList)) {
   
   row1 <- grep("MMWR|Average Weekly Percentage", x$var ) %>% min()
   
-  lastrow <-   row1 + 8 #grep("Figure 1", x$var ) - 1
+  lastrow <- row1 + 8 #grep("Figure 1", x$var ) - 1
   
   if(FALSE) {
     
@@ -404,7 +404,7 @@ for (i in seq_along(iliList)) {
   wklyCnts_[[i]] <- x1 %>% 
     slice(row1:nrow(x1)) %>% 
     separate(var, c("Wk", "YrA", "YrB", "YrC")
-            ,  extra = "merge", sep = " ") %>% 
+             ,  extra = "merge", sep = " ") %>% 
     setNames( .[1,] %>% unlist() %>% as.character()) %>% 
     setNames(gsub("[^[:alnum:]-]", perl = TRUE, "", names(.))) %>% 
     mutate(file = sub(".*sites/\\d/\\d{4}/\\d{2}/(.*)" ,"\\1", url)) %>%
@@ -414,6 +414,8 @@ for (i in seq_along(iliList)) {
     mutate(iteration = i)
   
 }
+
+Sys.time() - startTime
 
 wklyCnts <- data.table::rbindlist(wklyCnts_, fill = TRUE)
 
@@ -2175,6 +2177,7 @@ if(FALSE) {
                                     as.Date(., format = "%y-%U-%u"),
                                   TRUE ~ start),
            FinalstartWeek = format(Finalstart, "%Y-%U"),
+           FinalstartWeekYear = format(Finalstart, "%Y"),
            final_MMWRWeek = case_when(is.na(MMWRWeek) ~
                                         format(start, "%U") %>% as.numeric,
                                       TRUE ~ as.numeric(MMWRWeek) )) #%>% select(-file)
@@ -2210,6 +2213,24 @@ if(FALSE) {
     theme(legend.position = "top"
           ,axis.text.x = element_text(angle = 90, hjust = 1))
   
+  wklyCnts_t  %>% # some pcnts are dif eg week 2017-48 has more than one value reported
+    arrange(desc(iteration)) %>%
+    group_by(Finalstart, final_MMWRWeek) %>%
+    slice(1) %>%
+    ggplot() +
+    geom_line( aes(x = final_MMWRWeek , y = PcntNum
+                   ,color = FinalstartWeekYear
+    ),
+    alpha = .5) +
+    geom_point( aes(x = final_MMWRWeek , y = PcntNum
+                    ,color = FinalstartWeekYear
+    ),
+    alpha = .5) + 
+    scale_x_date( date_labels = "%Y-%U"
+                  ,  breaks = '4 weeks') +
+    theme(legend.position = "top"
+          ,axis.text.x = element_text(angle = 90, hjust = 1))
+
   # assign the MMWR week https://wwwn.cdc.gov/nndss/document/MMWR_Week_overview.pdf
   
   t <- seq(as.Date("2015-01-01")
