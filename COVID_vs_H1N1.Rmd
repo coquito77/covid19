@@ -512,11 +512,13 @@ if( !exists("US_CoronaVirus")) {
 
 if(FALSE) system(paste0('open "', "helperFunctions.r", '"'))
 
+if(FALSE) system(paste0('open "', "covid19DataNYTimes.R", '"'))
+
 source("helperFunctions.r")
 
 cols <- c("Cases" = "#d8b365", "Deaths" = "#998ec3", "Hospitalizations" = "#5ab4ac")
 
-sum_US_CoronaVirus <- US_CoronaVirus %>% 
+sum_US_CoronaVirus <- US_StCoronaVirus %>% 
   group_by(date) %>% 
   summarise(totalDailyCases = sum(cases, rm.na = TRUE),
             totalDeaths = sum(deaths, rm.na = TRUE)) %>% 
@@ -715,7 +717,16 @@ Source: https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)
 
 
 sum_US_CoronaVirus %>% 
-  ggplot +
+  ggplot() +
+    geom_text(data = data.frame(x = 10, y = 2) 
+            , aes(x = x,
+                  y = y,
+                  label = "Note: Chart is in logaritmic scale. Vertical scale is compress to show changes in percentage terms.
+                  A rise from 100 to 110 takes the same space as a rise from 100,000 to 110,000 since both are 10% changes."
+            )
+            ,hjust = 0, nudge_x = 1
+            ,colour = "black",
+            size = 3 ) +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Cases Total_Cases") %>% 
                 mutate(type = "Cases"),
@@ -784,7 +795,7 @@ sum_US_CoronaVirus %>%
   )
 
 
-sum_US_CoronaVirus %>% 
+if(FALSE) sum_US_CoronaVirus %>% 
   ggplot +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Cases Total_Cases") %>% 
@@ -846,7 +857,7 @@ sum_US_CoronaVirus %>%
        https://www.cdc.gov/h1n1flu/estimates_2009_h1n1.htm (H1N1)")
   )
 
-sum_US_CoronaVirus %>% 
+if(FALSE) sum_US_CoronaVirus %>% 
   ggplot +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Cases Total_Cases") %>% 
@@ -1014,11 +1025,13 @@ sum_US_CoronaVirus %>%
   )
 
 
-
 ### Total Deaths ####
 
-sum_US_CoronaVirus %>% 
+ sum_US_CoronaVirus %>% 
   ggplot +
+    geom_line(aes(x = dayCnt
+                ,y = totalDeaths),
+            colour = "red") +
   geom_ribbon(data = t_intr_estm %>% 
                 filter(Pop_type == "Deaths Total_Deaths") %>% 
                 mutate(type = "Deaths"),
@@ -1039,7 +1052,8 @@ sum_US_CoronaVirus %>%
                          ,imp_highEst = highEst) %>% 
                   separate(Pop_type, c("X2009H1N1", "type"), sep = "_") %>% 
                   inner_join(t_intr_estm %>% 
-                               select(EndMonth ,dayCnt))
+                               select(EndMonth ,dayCnt)) %>% 
+                  distinct()
                 ,aes(ymin = imp_lowEst, ymax = imp_highEst
                      ,x =dayCnt
                      ,group = type), width=.2,
@@ -1050,9 +1064,6 @@ sum_US_CoronaVirus %>%
             aes(x = dayCnt
                 ,y = imp_MidLevelRange),
             colour = "blue") +
-  geom_line(aes(x = dayCnt
-                ,y = totalDeaths),
-            colour = "red") +
   scale_fill_manual(name = "Type",
                     values = cols) +
   geom_text(data = H1N1_Death_currentDay 
@@ -1080,20 +1091,14 @@ sum_US_CoronaVirus %>%
              , aes(x = dayCnt,
                    y = totalDeaths)
              ,colour = "red") +
-  scale_y_log10(label = human_numbers) +
+ scale_y_continuous(label = human_numbers) +
   theme_plot +
-  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+50)
+  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+60)
                   , ylim = c(1, Cov_currentDay$totalDeaths)) +
-  annotation_logticks(sides = "l",
-                      short = unit(1,"mm"),
-                      mid = unit(3,"mm"),
-                      long = unit(5,"mm"),
-                      size = 0.2, linetype = 1
-                      , alpha = .8) +
   labs(title = "2009 H1N1 estimated deaths by day vs Covid-19 deaths"
        ,subtitle = paste(Cov_currentDay$dayCnt,
                          "days after the first case")
-       ,y = "Deaths (log scale)"
+       ,y = "Deaths"
        ,x = ""
        ,caption = paste("Note: y-axis is in log scale
 Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
@@ -1499,8 +1504,6 @@ ggplot() +
 
 # new cases per population
 
-# new cases per population
-
 newCasesCounties <- countyTrends %>% 
   filter(grepl("rollingMean",variable)) %>% 
   # filter(fips == "6037") %>% 
@@ -1600,6 +1603,87 @@ ggplot() +
                         ,data_Date
                         ,"(Covid19)")
   )
+
+# https://sites.uci.edu/energyobserver/2020/04/11/doubling-days-for-a-given-daily-percent-increase/
+# http://rstudio-pubs-static.s3.amazonaws.com/10369_9e0e4a116538489baa18908c1690293c.html
+# https://data.princeton.edu/eco572/grdt
+# https://rpubs.com/anthonybmasters/doubling-times
+
+
+countyTrends %>% 
+  filter(variable == "newCases") %>% 
+  mutate(count = replace_na(count, 0)) %>% 
+  group_by(fips) %>% 
+  mutate(cases_doub_days = 1*log(2)/log(count/lag(count, 1)),
+         cases_doub_days = case_when(cases_doub_days < 0 ~ NA_real_,
+                                     cases_doub_days > 35 ~ 35, 
+                                     TRUE ~ cases_doub_days)) %>% 
+  ungroup %>% 
+  ggplot() + 
+  geom_col(aes(x = date, y = cases_doub_days)) +
+  facet_wrap(~county, scales = "free", ncol = 1) +
+  coord_cartesian( ylim = c(-1, 50)) +
+  scale_x_date(expand = expansion(mult = c(.1, .15))) +
+  scale_y_continuous(#label = human_numbers,
+    expand = expansion(mult = c(0, .1))
+  ) +
+  # scale_color_manual(values = lcols ) +
+  theme_plot +
+  # geom_point(data = countyTrends %>% 
+  #              filter(variable == "newCases") %>% 
+  #              mutate(count = replace_na(count, 0)) %>% 
+  #              group_by(fips) %>% 
+  #              mutate(cases_doub_days = 1*log(2)/log(count/lag(count, 1)),
+  #                     cases_doub_days = case_when(cases_doub_days < 0 ~ NA_real_,
+  #                                                 cases_doub_days > 35 ~ 35, 
+  #                                                 TRUE ~ cases_doub_days)) %>% 
+  #              ungroup %>% filter(date == max(date))
+  #            , aes(x = date, y = cases_doub_days )
+  #            ,alpha = .8
+  # ) +
+  ggrepel::geom_text_repel(data = countyTrends %>% 
+                             filter(variable == "newCases") %>% 
+                             mutate(count = replace_na(count, 0)) %>% 
+                             group_by(fips) %>% 
+                             mutate(cases_doub_days = 1*log(2)/log(count/lag(count, 1)),
+                                    cases_doub_days = case_when(cases_doub_days < 0 ~ NA_real_,
+                                                                cases_doub_days > 35 ~ 35, 
+                                                                TRUE ~ cases_doub_days)) %>% 
+                             ungroup %>% 
+                             filter(date == max(date))
+                           ,aes(x =  date #+ 20
+                                , y = cases_doub_days
+                                # color = variable,
+                                ,label = paste0(scales::comma(cases_doub_days, accuracy = 0.1), " days")
+                           )
+                           ,show.legend = FALSE,
+                           size = 3,
+                           force             = 0.5,
+                           nudge_x           = 0.15,
+                           hjust             = -1,
+                           segment.size  = 0.2,
+                           segment.color = "grey50",
+                           direction     = "y"
+  ) +
+  labs(title = "Days to double the number of cases"
+       ,subtitle = "based on daily counts for when the counts increase from one day to the next day only, 
+       the if the counts double in more than 35 days they show as 35 days."
+       ,y = "Cases"
+       ,x = ""
+       ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                        ,data_Date
+                        ,"(Covid19)")
+  )
+
+if(FALSE) {
+  
+  # structural change analysis
+  # 
+  library(strucchange)
+  
+  
+}
+
 
 if(FALSE) {
   
@@ -2502,8 +2586,12 @@ if(FALSE) {
 
 dev.off()
 
+Sys.sleep(5)
+
 system(paste0('open "', paste0("2019H1N1_vs_COVID19_"
                                ,data_Date %>% gsub("-","",.),".pdf"), '"'))
+
+
 
 
 
