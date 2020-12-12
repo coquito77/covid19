@@ -1327,7 +1327,7 @@ coronaChange %>%
   geom_col(aes(x = dayCnt, y = Cnt, 
                fill = changeType), alpha = .8) +
   scale_y_continuous(label = human_numbers
-                     ,expand = expansion(mult = c(0, .1))
+                     ,expand = expansion(mult = c(0, .15))
   ) +
   #scale_x_continuous()
   scale_fill_brewer(name = "Change Type"
@@ -1611,7 +1611,7 @@ ggplot() +
 
 
 countyTrends %>% 
-  filter(variable == "newCases") %>% 
+  filter(variable == "rollingMean07Day") %>% 
   mutate(count = replace_na(count, 0)) %>% 
   group_by(fips) %>% 
   mutate(cases_doub_days = 1*log(2)/log(count/lag(count, 1)),
@@ -1624,9 +1624,9 @@ countyTrends %>%
   facet_wrap(~county, scales = "free", ncol = 1) +
   coord_cartesian( ylim = c(-1, 50)) +
   scale_x_date(expand = expansion(mult = c(.1, .15))) +
-  scale_y_continuous(#label = human_numbers,
-    expand = expansion(mult = c(0, .1))
-  ) +
+  scale_y_continuous("",
+                     expand = expansion(mult = c(0, .1)),
+                     labels = scales::comma) +
   # scale_color_manual(values = lcols ) +
   theme_plot +
   # geom_point(data = countyTrends %>% 
@@ -1640,34 +1640,35 @@ countyTrends %>%
   #              ungroup %>% filter(date == max(date))
   #            , aes(x = date, y = cases_doub_days )
   #            ,alpha = .8
-  # ) +
-  ggrepel::geom_text_repel(data = countyTrends %>% 
-                             filter(variable == "newCases") %>% 
-                             mutate(count = replace_na(count, 0)) %>% 
-                             group_by(fips) %>% 
-                             mutate(cases_doub_days = 1*log(2)/log(count/lag(count, 1)),
-                                    cases_doub_days = case_when(cases_doub_days < 0 ~ NA_real_,
-                                                                cases_doub_days > 35 ~ 35, 
-                                                                TRUE ~ cases_doub_days)) %>% 
-                             ungroup %>% 
-                             filter(date == max(date))
-                           ,aes(x =  date #+ 20
-                                , y = cases_doub_days
-                                # color = variable,
-                                ,label = paste0(scales::comma(cases_doub_days, accuracy = 0.1), " days")
-                           )
-                           ,show.legend = FALSE,
-                           size = 3,
-                           force             = 0.5,
-                           nudge_x           = 0.15,
-                           hjust             = -1,
-                           segment.size  = 0.2,
-                           segment.color = "grey50",
-                           direction     = "y"
-  ) +
+# ) +
+ggrepel::geom_text_repel(data = countyTrends %>% 
+                           filter(variable == "rollingMean07Day") %>% 
+                           mutate(count = replace_na(count, 0)) %>% 
+                           group_by(fips) %>% 
+                           mutate(cases_doub_days = 1*log(2)/log(count/lag(count, 1)),
+                                  cases_doub_days = case_when(cases_doub_days < 0 ~ NA_real_,
+                                                              cases_doub_days > 35 ~ 35, 
+                                                              TRUE ~ cases_doub_days)) %>% 
+                           ungroup %>% 
+                           filter(date == max(date))
+                         ,aes(x =  date #+ 20
+                              , y = cases_doub_days
+                              # color = variable,
+                              ,label = paste0(scales::comma(cases_doub_days, accuracy = 0.1), " days")
+                         )
+                         ,show.legend = FALSE,
+                         size = 3,
+                         force             = 0.5,
+                         nudge_x           = 0.15,
+                         hjust             = -1,
+                         segment.size  = 0.2,
+                         segment.color = "grey50",
+                         direction     = "y"
+) +
   labs(title = "Days to double the number of cases"
-       ,subtitle = "based on daily counts for when the counts increase from one day to the next day only, 
-       the if the counts double in more than 35 days they show as 35 days."
+       ,subtitle = "based on seven day rolling average of new cases,
+       for counts increase only, if the counts double in more
+       than 35 days they show as 35 days."
        ,y = "Cases"
        ,x = ""
        ,caption = paste("Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
@@ -1675,13 +1676,158 @@ countyTrends %>%
                         ,"(Covid19)")
   )
 
-if(FALSE) {
+if(TRUE) {
   
   # structural change analysis
-  # 
+  
   library(strucchange)
   
+  get_breakPoints = function(sel_name) {
+    
+    # sel_name <- 6037
+    
+    dum <- countyTrends %>% 
+      filter(variable == "newCases", fips == sel_name) %>% 
+      right_join(data.frame(date = seq( min(.$date), max(.$date), by ="day" ))) %>% 
+      mutate(count = replace_na(count, 0))
+    
+    tsDaily <- ts(dum$count, frequency = 365
+                  , start = c(year(dum$date)[1], as.numeric(format(dum$date, "%j")[1])))
+    
+    # complete structural change analysis on this variable
+    
+    breakTrendData <- tsDaily
+    
+    # plot(breakTrendData)
+    bpData <- breakpoints(breakTrendData ~ 1)
+    summary(bpData)
+    
+    breakPoints <- confint(bpData) %>% 
+      .$confint %>% 
+      as.data.frame() %>% 
+      left_join(dum %>% mutate(breakpoints = format(dum$date, "%j") %>% as.numeric))
+    
+    return(breakPoints)
+  }
   
+  dt_breakpoints <- lapply(unique(countyTrends$fips), get_breakPoints) %>% 
+    data.table::rbindlist(., fill = TRUE, idcol= "iteration") %>% 
+    right_join(countyTrends %>% 
+                 filter(variable == "newCases")) %>% # dt_breakpoints %>% 
+    left_join( countyTrends %>% 
+                 group_by(fips) %>% 
+                 arrange(date) %>% 
+                 distinct(fips,.keep_all = TRUE ) %>% 
+                 select(date, fips) %>% 
+                 mutate(breaks = 1) %>% ungroup ) %>%
+    arrange(fips, date) %>% 
+    group_by(fips) %>% 
+    mutate(breaks = case_when(!is.na(breakpoints) ~ 1, 
+                              TRUE~ breaks),
+           breaks = replace_na(breaks, 0),
+           breaks = cumsum(breaks),
+           breaks = as.character(breaks)) %>% 
+    ungroup
+  
+  if(FALSE) {
+    
+##calculate the regression coefficient r^2
+    dt_breakpoints %>% 
+      as.data.table() %>% 
+      .[,summary(lm(count~date))$r.squared, by = c("breaks", "fips")]
+
+    dt_breakpoints %>% 
+      as.data.table() %>% 
+      .[,list(r2=summary(lm(count~date))$r.squared ,
+              f=summary(lm(count~date))$fstatistic[1] )
+        ,by = c("breaks", "fips")]
+
+
+
+  m_eq <- function(df){
+
+    m <- lm(y ~ x, df);
+
+    eq <- substitute((y) == a + b %.% (x)*","~~(r)^2~"="~r2, 
+
+         list(a = format(unname(coef(m)[1]), digits = 2),
+
+              b = format(unname(coef(m)[2]), digits = 2),
+
+             r2 = format(summary(m)$r.squared, digits = 3)))
+
+    as.character(as.expression(eq));
+
+}
+
+p1 <- p + geom_text(x = 25, y = 300, label = lm_eq(df), parse = TRUE)
+
+p1
+}
+  
+  dt_breakpoints %>% 
+    ggplot() +
+    aes(x = date, y = count) +
+    geom_line(stat = "identity", size = .5, color = "#636363") + 
+    geom_point(alpha = 1/2, size = .5) +
+    facet_wrap(~ county, ncol = 1, scales = "free_y" ) + 
+    scale_y_continuous("",
+                       expand = expansion(mult = c(0, .1)),
+                       labels = scales::comma) +
+    scale_x_date("Period", 
+                 #limits = c(as.Date("2002-2-1"), end),
+                 date_labels = "%Y %m", 
+                 date_breaks= "2 months") +
+    geom_smooth(se = FALSE, method = lm, linetype = 'twodash',
+                aes(group = breaks, show.legend = FALSE)
+    )  +
+    guides(colour = FALSE) +
+    geom_vline(data = verticalLines
+               ,aes(xintercept = vline),
+               color = "blue", size = .5
+               ,alpha = .8) +
+    geom_vline(data = dt_breakpoints %>% 
+                 select(breakpoints, county, date ) %>% 
+                 filter(!is.na( breakpoints))
+               ,aes(xintercept = date),
+               color = "blue", size = .5
+               ,alpha = .5) +
+    geom_text(data = dt_breakpoints %>% 
+                select(breakpoints, county, date ) %>% 
+                filter(!is.na( breakpoints)) %>% 
+                left_join( dt_breakpoints %>% 
+                             select(county, count) %>% 
+                             group_by(county) %>% 
+                             arrange(desc(count)) %>% 
+                             distinct(county, .keep_all = TRUE ) )
+              ,aes(x = date
+                   ,y = count
+                   ,label = format(date, "%x")),
+              #hjust = 0,
+              #vjust = -1.50, 
+              angle = 0, 
+              size = 3 
+              ,colour = "blue") +
+    theme_plot +
+    labs(title = "Structural change analysis of daily cases"
+         ,subtitle = "blue lines with dates reflect when there was a break in the trend for each county"
+         ,y = "Cases"
+         ,x = ""
+         ,caption = paste("Note: new break trends can developed as new daily counts are included.
+                          Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                          ,data_Date
+                          ,"(Covid19)")
+    )
+  
+
+      
+}
+  
+
+
+
+  # add hospital beds ICU and covid
+  #  https://healthdata.gov/dataset/covid-19-reported-patient-impact-and-hospital-capacity-facility
 }
 
 
