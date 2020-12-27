@@ -429,6 +429,7 @@ save(wklyCnts, file = "wklyCnts.RData")
 ```{r analyzeData, eval = FALSE}
 
 rm(list = ls()) #start with empty workspace
+gc()
 
 # unlink("counties_2018acs.rds")
 
@@ -746,7 +747,7 @@ sum_US_CoronaVirus %>%
   geom_line(aes(x = dayCnt
                 ,y = totalDailyCases),
             colour = "red") +
-  geom_text(data = H1N1_Case_currentDay 
+  geom_text(data = H1N1_Case_Max # H1N1_Case_currentDay 
             , aes(x = dayCnt,
                   y = imp_MidLevelRange,
                   label = paste("H1N1 cases\n"
@@ -755,7 +756,7 @@ sum_US_CoronaVirus %>%
             )
             , hjust = 0, nudge_x = 1
             ,colour = "blue") +
-  geom_point(data = H1N1_Case_currentDay
+  geom_point(data =  H1N1_Case_Max # H1N1_Case_currentDay 
              , aes(x = dayCnt,
                    y = imp_MidLevelRange)
              ,colour = "blue") +
@@ -816,7 +817,7 @@ if(FALSE) sum_US_CoronaVirus %>%
   geom_line(aes(x = dayCnt
                 ,y = totalDailyCases),
             colour = "red") +
-  geom_text(data = H1N1_Case_currentDay 
+  geom_text(data = H1N1_Case_Max # H1N1_Case_currentDay 
             , aes(x = dayCnt,
                   y = imp_MidLevelRange,
                   label = paste("H1N1 cases\n"
@@ -825,7 +826,7 @@ if(FALSE) sum_US_CoronaVirus %>%
             )
             , hjust = 0, nudge_x = 1
             ,colour = "blue") +
-  geom_point(data = H1N1_Case_currentDay
+  geom_point(data = H1N1_Case_Max # H1N1_Case_currentDay 
              , aes(x = dayCnt,
                    y = imp_MidLevelRange)
              ,colour = "blue") +
@@ -1027,9 +1028,9 @@ sum_US_CoronaVirus %>%
 
 ### Total Deaths ####
 
- sum_US_CoronaVirus %>% 
+sum_US_CoronaVirus %>% 
   ggplot +
-    geom_line(aes(x = dayCnt
+  geom_line(aes(x = dayCnt
                 ,y = totalDeaths),
             colour = "red") +
   geom_ribbon(data = t_intr_estm %>% 
@@ -1066,7 +1067,7 @@ sum_US_CoronaVirus %>%
             colour = "blue") +
   scale_fill_manual(name = "Type",
                     values = cols) +
-  geom_text(data = H1N1_Death_currentDay 
+  geom_text(data = H1N1_Death_Max# H1N1_Death_currentDay 
             , aes(x = dayCnt,
                   y = imp_MidLevelRange,
                   label = paste("H1N1 deaths\n"
@@ -1075,7 +1076,7 @@ sum_US_CoronaVirus %>%
             )
             , hjust = 0, nudge_x = 1
             ,colour = "blue") +
-  geom_point(data = H1N1_Death_currentDay
+  geom_point(data =  H1N1_Death_Max# H1N1_Death_currentDay 
              , aes(x = dayCnt,
                    y = imp_MidLevelRange)
              ,colour = "blue") +
@@ -1818,16 +1819,127 @@ p1
                           ,data_Date
                           ,"(Covid19)")
     )
-  
 
-      
 }
+
+if( !file.exists("cb_2018_us_county_500k.Rdata")) {
   
-
-
+  ifelse(!dir.exists(file.path("./shapefiles")),
+         dir.create(file.path("./shapefiles")), FALSE)
+  
+  td = tempdir()
+  # create the placeholder file
+  tf = tempfile(tmpdir = td, fileext = ".zip")
+  # download into the placeholder file
+  download.file("https://www2.census.gov/geo/tiger/GENZ2018/shp/cb_2018_us_zcta510_500k.zip"
+                ,  tf)
+  
+  # get the name of the first file in the zip archive
+  fname <- unzip(tf,
+                 exdir = "shapefiles", list=TRUE)$Name %>% .[grepl("shp$",.)]
+  
+  unzip(tf,
+        exdir = "shapefiles")
+  
+  cb_2018_us_zcta510_500k <- list.files(recursive = TRUE
+                                        ,pattern = "shp$") %>% 
+    .[grepl(fname,.)] %>% 
+    sf::read_sf(quiet = TRUE, stringsAsFactors = FALSE) %>% 
+    sf::st_transform(., 4269)
+  
+  sf::st_crs(cb_2018_us_zcta510_500k)
+  
+  save(cb_2018_us_zcta510_500k, file = "cb_2018_us_zcta510_500k.Rdata")
+  
+}
 
   # add hospital beds ICU and covid
   #  https://healthdata.gov/dataset/covid-19-reported-patient-impact-and-hospital-capacity-facility
+
+load("cb_2018_us_zcta510_500k.Rdata")
+load("cb_2018_us_county_500k.Rdata")
+
+zipcodes <- st_intersection(  cb_2018_us_zcta510_500k %>% 
+                                mutate(geo_all_SqrMile = st_area(geometry),
+                                       geo_all_SqrMile = as.numeric(geo_all_SqrMile),
+                                       geo_all_SqrMile = geo_all_SqrMile / 2.59e+6) %>% 
+                                # rmapshaper::ms_simplify() %>% 
+                                select(zip = ZCTA5CE10 , geo_all_SqrMile)
+                              ,
+                              cb_2018_us_county_500k %>%
+                                filter(STATEFP == "06") %>%
+                                filter(grepl("Los Angeles|Riverside|Orange|San Bernardino", NAME)) %>% 
+                                select( STATEFP, COUNTYFP, NAME)
+) %>% 
+  st_sf %>% 
+  mutate(intersectLACo = 1,
+         geo_intersect_SqrMile = st_area(geometry),
+         geo_intersect_SqrMile = as.numeric(geo_intersect_SqrMile),
+         geo_intersect_SqrMile = geo_intersect_SqrMile / 2.59e+6,
+         pcnt_Intr_ovr_All = geo_intersect_SqrMile/geo_all_SqrMile,
+         pcnt_Intr_ovr_All = round(pcnt_Intr_ovr_All, 2),
+         geo_intersect_SqrMile = round(geo_intersect_SqrMile, 2),
+         #geo_intersect_SqrMile = round(geo_intersect_SqrMile, 2),
+         geo_all_SqrMile = round(geo_all_SqrMile, 2)
+  ) %>% 
+  group_by(zip) %>% 
+  mutate(cnt_splits = n()) %>% 
+  ungroup
+
+rm(list = c("cb_2018_us_zcta510_500k", "cb_2018_us_county_500k"))
+
+hospData_url <- "https://healthdata.gov/dataset/covid-19-reported-patient-impact-and-hospital-capacity-facility"
+
+read_html(hospData_url) %>% 
+  html_nodes(., "a") %>% 
+  html_attr(., "href") %>% 
+  .[grepl(".csv$", .)] %>% 
+  fread() %>% 
+  # filter(grepl("CA", state, ignore.case = TRUE)) %>% 
+  # filter(grepl("Riverside", city, ignore.case = TRUE)) %>% 
+  # select(state, city, hospital_name, zip) %>% 
+  mutate(zip = as.character(zip)) %>% 
+  inner_join(  zipcodes %>% st_drop_geometry() %>%
+                 arrange(desc(pcnt_Intr_ovr_All)) %>% distinct(zip, .keep_all = TRUE) %>% #View("newZips") 
+                 select(zip, NAME)
+  ) %>% 
+  select(collection_week, city, hospital_name, NAME, contains("staffed_icu_adult_patients_confirmed_and_suspected")
+         ,contains("total_adult_patients_hospitalized_confirmed_and_suspected_c")
+  ) %>% # head() %>% 
+  mutate(collection_week = as.Date(collection_week),
+         across(contains("and_suspected_covid"), ~ as.numeric(.)),
+         across(contains("and_suspected_covid"), ~ na_if(., -999999.0))) %>% 
+  group_by(collection_week, NAME) %>% 
+  mutate(cln_avg_totl_adlt_ptnt_hspt_cnfr_and_sspc_covd = total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum /
+           total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_coverage,
+         
+         cln_avg_stff_icu_adlt_ptnt_cnfr_and_sspc = staffed_icu_adult_patients_confirmed_and_suspected_covid_7_day_sum /
+           staffed_icu_adult_patients_confirmed_and_suspected_covid_7_day_coverage) %>% 
+  select(collection_week:NAME, NAME, starts_with("cln_")) %>% 
+  summarize(cln_avg_totl_adlt_ptnt_hspt_cnfr_and_sspc_covd = sum(cln_avg_totl_adlt_ptnt_hspt_cnfr_and_sspc_covd
+                                                                 , na.rm = TRUE),
+            cln_avg_stff_icu_adlt_ptnt_cnfr_and_sspc = sum( cln_avg_stff_icu_adlt_ptnt_cnfr_and_sspc
+                                                            , na.rm = TRUE)) %>% 
+  ungroup %>% 
+  pivot_longer(-c(collection_week,NAME) ) %>% 
+  ggplot() +
+  geom_line(aes(x =  collection_week, y = value, color = name, group = name)
+            , show.legend = FALSE) +
+  geom_point(aes(x =  collection_week, y = value, color = name)
+             , show.legend = FALSE) +
+  scale_y_continuous(label = human_numbers
+                     ,expand = expansion(mult = c(0.1, .25))) +
+  facet_wrap(vars(NAME, name), labeller = "label_both", scales = "free_y", ncol = 2) +
+  theme_plot +
+  labs(title = "COVID-19 Reported Patient Impact and Hospital Capacity by Facility"
+       ,subtitle = "For Los Angeles, Orange, Riverside and San Bernardino Counties"
+       ,y = "Cases"
+       ,x = ""
+       ,caption = paste("Sources: U.S. Department of Health and Human Services Office\n",hospData_url, "accessed"
+                        ,data_Date)
+  )
+
+
 }
 
 
