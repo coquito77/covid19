@@ -196,19 +196,34 @@ prettyFractions <- function(x = NULL, smbl ="", signif = 3){
 
       if ( between(d, 1, 10) ) {
         paste0( y_is_positive, smbl
-                ,fractional::fractional(y, eps = 1e-02, maxConv = 20, sync = TRUE))
+                ,fractional::fractional(y, eps = 1e-02, maxConv = 20, sync = TRUE) %>%
+                  paste0(" ",sub("(.*)/(.*)", "\\1", .),"/", sub("(.*)/(.*)", "\\2", .) %>%
+                           as.numeric(.) %>%
+                           scales::comma(.)) %>%  sub("(.*) (.*)", "\\2", .) )
       } else if ( between(c, 1, 10)){
         paste0( y_is_positive, smbl
-                ,fractional::fractional(y, eps = 1e-03, maxConv = 20, sync = TRUE))
+                ,fractional::fractional(y, eps = 1e-03, maxConv = 20, sync = TRUE) %>%
+                  paste0(" ",sub("(.*)/(.*)", "\\1", .),"/", sub("(.*)/(.*)", "\\2", .) %>%
+                           as.numeric(.) %>%
+                           scales::comma(.)) %>%  sub("(.*) (.*)", "\\2", .) )
       } else if ( between(m, 1, 10)){
         paste0( y_is_positive, smbl
-                ,fractional::fractional(y, eps = 1e-04, maxConv = 20, sync = TRUE))
-      }else if( between(m1, 1, 10)){
+                ,fractional::fractional(y, eps = 1e-04, maxConv = 20, sync = TRUE) %>%
+                  paste0(" ",sub("(.*)/(.*)", "\\1", .),"/", sub("(.*)/(.*)", "\\2", .) %>%
+                           as.numeric(.) %>%
+                           scales::comma(.)) %>%  sub("(.*) (.*)", "\\2", .) )
+      } else if( between(m1, 1, 10)){
         paste0( y_is_positive, smbl
-                ,fractional::fractional(y, eps = 1e-06, maxConv = 20, sync = TRUE))
+                ,fractional::fractional(y, eps = 1e-06, maxConv = 20, sync = TRUE) %>%
+                  paste0(" ",sub("(.*)/(.*)", "\\1", .),"/", sub("(.*)/(.*)", "\\2", .) %>%
+                           as.numeric(.) %>%
+                           scales::comma(.)) %>%  sub("(.*) (.*)", "\\2", .) )
       } else {
         paste0( y_is_positive, smbl
-                ,fractional::fractional(y, eps = 1e-09, maxConv = 20, sync = TRUE))
+                ,fractional::fractional(y, eps = 1e-09, maxConv = 20, sync = TRUE) %>%
+                  paste0(" ",sub("(.*)/(.*)", "\\1", .),"/", sub("(.*)/(.*)", "\\2", .) %>%
+                           as.numeric(.) %>%
+                           scales::comma(.)) %>%  sub("(.*) (.*)", "\\2", .) )
       }
     } else if (is.na(y) | is.null(y)){
       "-"
@@ -217,6 +232,12 @@ prettyFractions <- function(x = NULL, smbl ="", signif = 3){
 
   sapply(x, humanity)
 }
+
+fractional::fractional(y, eps = 1e-09, maxConv = 20, sync = TRUE) %>%
+  sub("(.*)/(.*)", "\\2", .) %>%
+  as.numeric(.) %>%
+  scales::comma(.)
+
 
 
 human_numbers <- function(x = NULL, smbl ="", signif = 2){
@@ -361,7 +382,8 @@ geo_theme <- hrbrthemes::theme_ipsum_rc(plot_title_size = 30, subtitle_size = 30
 #' @param legendtitle Legend title (optional).
 #'
 #' @return ggplot object
-calendarHeatmap <- function(dates, values, title = "", subtitle = "", legendtitle = ""){
+#'
+calendarHeatmap <- function(dates, values, title = "", subtitle = "", legendtitle = "", guideName = ""){
 
   if (!require("lubridate")) install.packages("lubridate"); library(lubridate)
 
@@ -444,6 +466,9 @@ calendarHeatmap <- function(dates, values, title = "", subtitle = "", legendtitl
   fillBreaks <- values %>%
     pretty(., 5)
 
+  if(guideName == "") {
+    guideName = "Value"
+  }
 
   g <- ggplot(df, aes(woy, dowmapped, fill = value)) +
     geom_tile(colour = "darkgrey") +
@@ -456,13 +481,14 @@ calendarHeatmap <- function(dates, values, title = "", subtitle = "", legendtitl
     scale_fill_gradient2(
       #trans = "sqrt"
       #alpha = .7
-      #,name = measures[i]
-      low = "#B5E384", # scales::muted("red"),
-      mid = "yellow",
-      high = "#D61818", # scales::muted("blue"),
+      oob = scales::squish,
+      name = guideName,
+      low = "#9DBF9E",# "#B5E384", # scales::muted("red"),
+      mid = "#FCB97D", # "yellow",
+     high = "#A84268", #"#D61818", # scales::muted("blue"),
       ,limits = c(min(fillBreaks), max(fillBreaks))
       ,midpoint = median(fillBreaks)
-      ,na.value = "white"
+     ,na.value = "white"
       ,breaks = fillBreaks,
       guide = guide_colorbar(
         direction = "horizontal",

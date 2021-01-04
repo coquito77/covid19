@@ -481,13 +481,10 @@ theme_set(theme_bw())
 
 load("cdc_estimates.RData")
 
-if(FALSE) {
-  
-  system(paste0('open "'
+if(FALSE)   system(paste0('open "'
                 ,'helperFunctions.r'
                 , '"'))
-  
-}
+
 
 source("helperFunctions.r")
 
@@ -565,10 +562,8 @@ H1N1_Death_Max <- t_intr_estm %>%
 # create pdf file with charts ####
 
 if( file.exists( paste0("2019H1N1_vs_COVID19_"
-                        ,data_Date %>% gsub("-","",.),".pdf"))  ) 
-  unlink( paste0("2019H1N1_vs_COVID19_"
-                 ,data_Date %>% gsub("-","",.),".pdf")
-  )
+                        ,data_Date %>% gsub("-","",.),".pdf"))  )   unlink( paste0("2019H1N1_vs_COVID19_"
+                                                                                   ,data_Date %>% gsub("-","",.),".pdf")  )
 
 Cairo::CairoPDF(file = paste0("2019H1N1_vs_COVID19_"
                               ,data_Date %>% gsub("-","",.),".pdf"),
@@ -776,7 +771,7 @@ sum_US_CoronaVirus %>%
                     values = cols) +
   scale_y_log10(label = human_numbers) +
   theme_plot +
-  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+50)
+  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+80)
                   , ylim = c(1, max(H1N1_Case_currentDay$imp_highEst))) +
   annotation_logticks(sides = "l",
                       short = unit(1,"mm"),
@@ -846,7 +841,7 @@ if(FALSE) sum_US_CoronaVirus %>%
                     values = cols) +
   scale_y_continuous(label = human_numbers) +
   theme_plot +
-  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+50)
+  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+80)
                   , ylim = c(0, max(H1N1_Case_currentDay$imp_highEst))) +
   labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
        ,subtitle = paste(Cov_currentDay$dayCnt, "days after the first case")
@@ -1011,11 +1006,11 @@ sum_US_CoronaVirus %>%
                    y = totalDailyCases)
              ,colour = "red") +
   theme_plot +
-  coord_cartesian(xlim = c(1, max(t_intr_estm$dayCnt)+50)
+  coord_cartesian(xlim = c(1, max(Cov_currentDay$dayCnt)+80)
                   , ylim = c(1, H1N1_Case_Max$imp_highEst)) +
   
   labs(title = "2009 H1N1 cumulative cases by day vs Covid-19"
-       ,subtitle = paste(H1N1_Case_Max$dayCnt,
+       ,subtitle = paste(Cov_currentDay$dayCnt,
                          "days after the first case")
        ,y = "Cases"
        ,x = ""
@@ -1094,7 +1089,7 @@ sum_US_CoronaVirus %>%
              ,colour = "red") +
  scale_y_continuous(label = human_numbers) +
   theme_plot +
-  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+60)
+  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+80)
                   , ylim = c(1, Cov_currentDay$totalDeaths)) +
   labs(title = "2009 H1N1 estimated deaths by day vs Covid-19 deaths"
        ,subtitle = paste(Cov_currentDay$dayCnt,
@@ -1167,7 +1162,7 @@ sum_US_CoronaVirus %>%
                   y = totalDeaths,
                   label = paste("COVID19 deaths\n"
                                 ,scales::comma(totalDeaths))
-            )
+            ) 
             , hjust = 0, nudge_x = 1
             ,colour = "red") +
   geom_point(data = Cov_currentDay
@@ -1176,7 +1171,7 @@ sum_US_CoronaVirus %>%
              ,colour = "red") +
   scale_y_log10(label = human_numbers) +
   theme_plot +
-  coord_cartesian(xlim = c(1, H1N1_Death_Max$dayCnt+50)
+  coord_cartesian(xlim = c(1, Cov_currentDay$dayCnt+80)
                   , ylim = c(1, Cov_currentDay$totalDeaths)) +
   annotation_logticks(sides = "l",
                       short = unit(1,"mm"),
@@ -1185,7 +1180,7 @@ sum_US_CoronaVirus %>%
                       size = 0.2, linetype = 1
                       , alpha = .8) +
   labs(title = "2009 H1N1 estimated deaths by day vs Covid-19 deaths"
-       ,subtitle = paste(H1N1_Death_Max$dayCnt,
+       ,subtitle = paste(Cov_currentDay$dayCnt,
                          "days after the first case")
        ,y = "Deaths (log scale)"
        ,x = ""
@@ -1341,8 +1336,7 @@ coronaChange %>%
   # ) +
   theme_plot +
   labs(title = "2009 H1N1 new cases by day vs Covid-19 cases"
-       ,subtitle = "336 days after the first case
-       Vertical blue lines are for reference and placed every two months
+       ,subtitle = "Vertical blue lines are for reference and placed every two months
        after the frst case for each pandemic"
        ,y = "Cases"
        ,x = ""
@@ -1392,8 +1386,7 @@ coronaChange %>%
   #coord_cartesian(xlim = c(1, 336) #, ylim = c(0, 50000)
   # ) + 
   labs(title = "2009 H1N1 new deaths by day vs Covid-19 deaths"
-       ,subtitle = "336 days after the first case
-       Vertical blue lines are for reference and placed every two months
+       ,subtitle = "Vertical blue lines are for reference and placed every two months
        after the frst case for each pandemic"
        ,y = "New deaths"
        ,x = ""
@@ -1412,9 +1405,10 @@ values <- CoronaCases$Cnt
 
 plotCases <- calendarHeatmap(dates
                              , values
-                             , title = "COVID 19 Cases in the US"
+                             , title = "COVID-19 Cases in the US"
                              , subtitle = ""
-                             , legendtitle = "Cases")
+                             , legendtitle = "Cases",
+                             guideName = "Cases")
 
 CoronaDeaths <- coronaChange %>% 
   filter(type == "deaths") %>% 
@@ -1425,9 +1419,10 @@ values <- CoronaDeaths$Cnt
 
 plotDeaths <- calendarHeatmap(dates
                               , values
-                              , title = "COVID 19 Deaths in the US"
+                              , title = "COVID-19 Deaths in the US"
                               , subtitle = ""
-                              , legendtitle = "Deaths")
+                              , legendtitle = "Deaths",
+                              guideName = "Deaths")
 
 
 library(gridExtra)
@@ -1492,8 +1487,11 @@ ggplot() +
                            segment.color = "grey50",
                            direction     = "y"
   ) +
+  
   scale_colour_manual(values = c("rollingMean07Day" = "darkgoldenrod4", "rollingMean14Day" = "seagreen")) +
   theme_plot +
+    scale_y_continuous(label = human_numbers
+                     ,expand = expansion(mult = c(0.1, .25))) +
   labs(title = "Rates by Counties"
        ,subtitle = "New cases, 7 and 14 days rolling average "
        ,y = "Cases"
@@ -1735,15 +1733,24 @@ if(TRUE) {
 ##calculate the regression coefficient r^2
     dt_breakpoints %>% 
       as.data.table() %>% 
-      .[,summary(lm(count~date))$r.squared, by = c("breaks", "fips")]
-
+      .[, summary(lm(count~date))$r.squared, keyby = .(breaks, fips, county)]
+    
     dt_breakpoints %>% 
       as.data.table() %>% 
-      .[,list(r2=summary(lm(count~date))$r.squared ,
-              f=summary(lm(count~date))$fstatistic[1] )
-        ,by = c("breaks", "fips")]
-
-
+      .[,list(coef_Intercept = coef(summary(lm(count~date)))[1],
+              coef_x = coef(summary(lm(count~date)))[2],
+              cof_Estimate = summary(lm(count~date))$coefficients[1],
+              cof_Std_err = summary(lm(count~date))$coefficients[2],
+              cof_t_val = summary(lm(count~date))$coefficients[3],
+              cof_t_stat = summary(lm(count~date))$coefficients[4],
+              r2 = summary(lm(count~date))$r.squared ,
+              f = summary(lm(count~date))$fstatistic[1] )
+        ,keyby = .(breaks, fips, county)] %>% 
+      .[order(-county, -breaks, decreasing = TRUE),] %>% 
+      left_join(dt_breakpoints %>% arrange(desc(date)) %>%
+                  distinct(county, breaks, .keep_all = TRUE) %>% 
+                  select(date, county, breaks)) %>% 
+      mutate(estimate = coef_Intercept + (coef_x * as.numeric(date)))
 
   m_eq <- function(df){
 
@@ -1764,6 +1771,7 @@ if(TRUE) {
 p1 <- p + geom_text(x = 25, y = 300, label = lm_eq(df), parse = TRUE)
 
 p1
+
 }
   
   dt_breakpoints %>% 
@@ -1810,6 +1818,8 @@ p1
               size = 3 
               ,colour = "blue") +
     theme_plot +
+  scale_y_continuous(label = human_numbers
+                     ,expand = expansion(mult = c(0.1, .25))) +
     labs(title = "Structural change analysis of daily cases"
          ,subtitle = "blue lines with dates reflect when there was a break in the trend for each county"
          ,y = "Cases"
@@ -1940,8 +1950,6 @@ read_html(hospData_url) %>%
   )
 
 
-}
-
 
 if(FALSE) {
   
@@ -1998,7 +2006,6 @@ if(FALSE) {
     arrange(state_rank)
   
 }
-
 
 countyPop <- counties_2018acs %>% 
   filter(variable == "B01003_001") %>% 
@@ -2848,10 +2855,6 @@ Sys.sleep(5)
 
 system(paste0('open "', paste0("2019H1N1_vs_COVID19_"
                                ,data_Date %>% gsub("-","",.),".pdf"), '"'))
-
-
-
-
 
 
 
