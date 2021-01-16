@@ -482,8 +482,8 @@ theme_set(theme_bw())
 load("cdc_estimates.RData")
 
 if(FALSE)   system(paste0('open "'
-                ,'helperFunctions.r'
-                , '"'))
+                          ,'helperFunctions.r'
+                          , '"'))
 
 
 source("helperFunctions.r")
@@ -1912,24 +1912,20 @@ read_html(hospData_url) %>%
   inner_join(  zipcodes %>% st_drop_geometry() %>%
                  arrange(desc(pcnt_Intr_ovr_All)) %>% distinct(zip, .keep_all = TRUE) %>% #View("newZips") 
                  select(zip, NAME)
-  ) %>% 
-  select(collection_week, city, hospital_name, NAME, contains("staffed_icu_adult_patients_confirmed_and_suspected")
-         ,contains("total_adult_patients_hospitalized_confirmed_and_suspected_c")
-  ) %>% # head() %>% 
+  ) %>% # tmp %>% 
+  select(collection_week, city, hospital_name, NAME, total_icu_beds_7_day_sum, icu_beds_used_7_day_sum ) %>% 
+  #   select(collection_week, city, hospital_name, NAME, contains("staffed_icu_adult_patients_confirmed_and_suspected")
+  #          ,contains("total_adult_patients_hospitalized_confirmed_and_suspected_c")
   mutate(collection_week = as.Date(collection_week),
-         across(contains("and_suspected_covid"), ~ as.numeric(.)),
-         across(contains("and_suspected_covid"), ~ na_if(., -999999.0))) %>% 
+         across(contains("_7_day_sum"), ~ na_if(., "-999999")),
+         across(contains("_7_day_sum"), ~ as.numeric(.)) 
+  ) %>% 
   group_by(collection_week, NAME) %>% 
-  mutate(cln_avg_totl_adlt_ptnt_hspt_cnfr_and_sspc_covd = total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_sum /
-           total_adult_patients_hospitalized_confirmed_and_suspected_covid_7_day_coverage,
-         
-         cln_avg_stff_icu_adlt_ptnt_cnfr_and_sspc = staffed_icu_adult_patients_confirmed_and_suspected_covid_7_day_sum /
-           staffed_icu_adult_patients_confirmed_and_suspected_covid_7_day_coverage) %>% 
+  mutate(cln_icu_beds_ovr_total = icu_beds_used_7_day_sum /
+           total_icu_beds_7_day_sum ) %>% 
   select(collection_week:NAME, NAME, starts_with("cln_")) %>% 
-  summarize(cln_avg_totl_adlt_ptnt_hspt_cnfr_and_sspc_covd = sum(cln_avg_totl_adlt_ptnt_hspt_cnfr_and_sspc_covd
-                                                                 , na.rm = TRUE),
-            cln_avg_stff_icu_adlt_ptnt_cnfr_and_sspc = sum( cln_avg_stff_icu_adlt_ptnt_cnfr_and_sspc
-                                                            , na.rm = TRUE)) %>% 
+  summarize(cln_icu_beds_ovr_total = sum(cln_icu_beds_ovr_total
+                                                                 , na.rm = TRUE)) %>% 
   ungroup %>% 
   pivot_longer(-c(collection_week,NAME) ) %>% 
   ggplot() +

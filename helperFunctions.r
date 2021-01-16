@@ -177,7 +177,9 @@ pretty_date_breaks <- function(x = empty, smbl ="", format1 = "%Y %b", format2 =
 #                #,limits = c(1900,2000), expand = c(0,0)
 #   )
 
+
 prettyFractions <- function(x = NULL, smbl ="", signif = 3){
+
   humanity <- function(y){
     # y <- t$estPcnt
     if (!is.na(y)){
@@ -233,12 +235,10 @@ prettyFractions <- function(x = NULL, smbl ="", signif = 3){
   sapply(x, humanity)
 }
 
-fractional::fractional(y, eps = 1e-09, maxConv = 20, sync = TRUE) %>%
+if(FALSE) fractional::fractional(y, eps = 1e-09, maxConv = 20, sync = TRUE) %>%
   sub("(.*)/(.*)", "\\2", .) %>%
   as.numeric(.) %>%
   scales::comma(.)
-
-
 
 human_numbers <- function(x = NULL, smbl ="", signif = 2){
   # https://stackoverflow.com/questions/11610377/
