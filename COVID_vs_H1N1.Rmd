@@ -1223,13 +1223,13 @@ coronaChange <- sum_US_CoronaVirus %>%
          ,date = as.Date(date))
 
 coronaChange <- coronaChange %>% 
-  full_join( expand.grid(dayCnt = seq(max(coronaChange$dayCnt)
-                                      ,max(t_intr_estm$dayCnt), by = 1),
+  full_join( expand.grid(dayCnt = seq(min(coronaChange$dayCnt)
+                                      ,max(coronaChange$dayCnt), by = 1),
                          type = c("cases", "deaths") ) %>% 
                group_by(type) %>% 
                mutate( date = seq(max(coronaChange$date)+1, by = "1 day"
-                                  ,length.out = max(t_intr_estm$dayCnt)-max(coronaChange$dayCnt)+1
-               ))  %>% ungroup  
+                                  ,length.out = max(coronaChange$dayCnt)-max(coronaChange$dayCnt)+1
+               )) %>% ungroup  
   ) %>% 
   mutate( Cnt = replace_na(Cnt, 0),
           changeType = replace_na(changeType, "Other"),
@@ -1300,9 +1300,8 @@ verticalLines <- coronaChange %>%
 coronaChange %>% 
   bind_rows(H1N1Change) %>% 
   filter(type == "cases") %>% 
-  mutate(changeType = fct_relevel(changeType, "Other", after = Inf) 
-  ) %>% 
-  #left_join() %>% 
+  mutate(dataSet = case_when(is.na(dataSet) ~ "COVID-19",
+                             TRUE ~ dataSet)) %>% 
   ggplot() +
   geom_vline(data = verticalLines
              ,aes(xintercept = vline),
@@ -1437,7 +1436,9 @@ countyTrends <- US_CoronaVirus %>%
   arrange(fips, date) %>% 
   group_by(fips, county) %>% 
   mutate(newCases = lag(cases),
-         newCases = cases - newCases) %>% 
+         newCases = cases - newCases,
+         newDeaths = lag( deaths),
+         newDeaths = deaths - newDeaths) %>% 
   ungroup() %>% 
   as.data.table() %>% 
   .[, rollingMean07Day := frollmean(newCases, 7, na.rm = T), by = fips] %>%
@@ -1681,7 +1682,7 @@ if(TRUE) {
   
   library(strucchange)
   
-  get_breakPoints = function(sel_name) {
+  get_cases_breakPoints = function(sel_name) {
     
     # sel_name <- 6037
     
@@ -1709,7 +1710,36 @@ if(TRUE) {
     return(breakPoints)
   }
   
-  dt_breakpoints <- lapply(unique(countyTrends$fips), get_breakPoints) %>% 
+  get_deaths_breakPoints = function(sel_name) {
+    
+    # sel_name <- 6037
+    
+    dum <- countyTrends %>% 
+      filter(variable == "newDeaths", fips == sel_name) %>% 
+      right_join(data.frame(date = seq( min(.$date), max(.$date), by ="day" ))) %>% 
+      mutate(count = replace_na(count, 0))
+    
+    tsDaily <- ts(dum$count, frequency = 365
+                  , start = c(year(dum$date)[1], as.numeric(format(dum$date, "%j")[1])))
+    
+    # complete structural change analysis on this variable
+    
+    breakTrendData <- tsDaily
+    
+    # plot(breakTrendData)
+    bpData <- breakpoints(breakTrendData ~ 1)
+    summary(bpData)
+    
+    breakPoints <- confint(bpData) %>% 
+      .$confint %>% 
+      as.data.frame() %>% 
+      left_join(dum %>% mutate(breakpoints = format(dum$date, "%j") %>% as.numeric))
+    
+    return(breakPoints)
+  }
+  
+  
+  dt_cases_breakpoints <- lapply(unique(countyTrends$fips), get_cases_breakPoints) %>% 
     data.table::rbindlist(., fill = TRUE, idcol= "iteration") %>% 
     right_join(countyTrends %>% 
                  filter(variable == "newCases")) %>% # dt_breakpoints %>% 
@@ -1728,14 +1758,33 @@ if(TRUE) {
            breaks = as.character(breaks)) %>% 
     ungroup
   
+  dt_deaths_breakpoints <- lapply(unique(countyTrends$fips), get_deaths_breakPoints) %>% 
+    data.table::rbindlist(., fill = TRUE, idcol= "iteration") %>% 
+    right_join(countyTrends %>% 
+                 filter(variable == "newDeaths")) %>% # dt_breakpoints %>% 
+    left_join( countyTrends %>% 
+                 group_by(fips) %>% 
+                 arrange(date) %>% 
+                 distinct(fips,.keep_all = TRUE ) %>% 
+                 select(date, fips) %>% 
+                 mutate(breaks = 1) %>% ungroup ) %>%
+    arrange(fips, date) %>% 
+    group_by(fips) %>% 
+    mutate(breaks = case_when(!is.na(breakpoints) ~ 1, 
+                              TRUE~ breaks),
+           breaks = replace_na(breaks, 0),
+           breaks = cumsum(breaks),
+           breaks = as.character(breaks)) %>% 
+    ungroup
+  
   if(FALSE) {
     
 ##calculate the regression coefficient r^2
-    dt_breakpoints %>% 
+    dt_cases_breakpoints %>% 
       as.data.table() %>% 
       .[, summary(lm(count~date))$r.squared, keyby = .(breaks, fips, county)]
     
-    dt_breakpoints %>% 
+    dt_cases_breakpoints %>% 
       as.data.table() %>% 
       .[,list(coef_Intercept = coef(summary(lm(count~date)))[1],
               coef_x = coef(summary(lm(count~date)))[2],
@@ -1747,7 +1796,7 @@ if(TRUE) {
               f = summary(lm(count~date))$fstatistic[1] )
         ,keyby = .(breaks, fips, county)] %>% 
       .[order(-county, -breaks, decreasing = TRUE),] %>% 
-      left_join(dt_breakpoints %>% arrange(desc(date)) %>%
+      left_join(dt_cases_breakpoints %>% arrange(desc(date)) %>%
                   distinct(county, breaks, .keep_all = TRUE) %>% 
                   select(date, county, breaks)) %>% 
       mutate(estimate = coef_Intercept + (coef_x * as.numeric(date)))
@@ -1774,15 +1823,15 @@ p1
 
 }
   
-  dt_breakpoints %>% 
+  plot_Strc_Chng_cases <- dt_cases_breakpoints %>% 
     ggplot() +
     aes(x = date, y = count) +
     geom_line(stat = "identity", size = .5, color = "#636363") + 
     geom_point(alpha = 1/2, size = .5) +
     facet_wrap(~ county, ncol = 1, scales = "free_y" ) + 
-    scale_y_continuous("",
-                       expand = expansion(mult = c(0, .1)),
-                       labels = scales::comma) +
+    # scale_y_continuous("",
+    #                    expand = expansion(mult = c(0, .1)),
+    #                    labels = scales::comma) +
     scale_x_date("Period", 
                  #limits = c(as.Date("2002-2-1"), end),
                  date_labels = "%Y %m", 
@@ -1795,16 +1844,16 @@ p1
                ,aes(xintercept = vline),
                color = "blue", size = .5
                ,alpha = .8) +
-    geom_vline(data = dt_breakpoints %>% 
+    geom_vline(data = dt_cases_breakpoints %>% 
                  select(breakpoints, county, date ) %>% 
                  filter(!is.na( breakpoints))
                ,aes(xintercept = date),
                color = "blue", size = .5
                ,alpha = .5) +
-    geom_text(data = dt_breakpoints %>% 
+    geom_text(data = dt_cases_breakpoints %>% 
                 select(breakpoints, county, date ) %>% 
                 filter(!is.na( breakpoints)) %>% 
-                left_join( dt_breakpoints %>% 
+                left_join( dt_cases_breakpoints %>% 
                              select(county, count) %>% 
                              group_by(county) %>% 
                              arrange(desc(count)) %>% 
@@ -1818,9 +1867,9 @@ p1
               size = 3 
               ,colour = "blue") +
     theme_plot +
-  scale_y_continuous(label = human_numbers
-                     ,expand = expansion(mult = c(0.1, .25))) +
-    labs(title = "Structural change analysis of daily cases"
+    scale_y_continuous(label = human_numbers
+                       ,expand = expansion(mult = c(0.1, .25))) +
+    labs(title = "Structural change analysis of daily new cases"
          ,subtitle = "blue lines with dates reflect when there was a break in the trend for each county"
          ,y = "Cases"
          ,x = ""
@@ -1829,8 +1878,70 @@ p1
                           ,data_Date
                           ,"(Covid19)")
     )
-
+  
+  print(plot_Strc_Chng_cases)
+  
+ plot_Strc_Chng_deaths <- dt_deaths_breakpoints %>% 
+    ggplot() +
+    aes(x = date, y = count) +
+    geom_line(stat = "identity", size = .5, color = "#636363") + 
+    geom_point(alpha = 1/2, size = .5) +
+    facet_wrap(~ county, ncol = 1, scales = "free_y" ) + 
+    # scale_y_continuous("",
+    #                    expand = expansion(mult = c(0, .1)),
+    #                    labels = scales::comma) +
+    scale_x_date("Period", 
+                 #limits = c(as.Date("2002-2-1"), end),
+                 date_labels = "%Y %m", 
+                 date_breaks= "2 months") +
+    geom_smooth(se = FALSE, method = lm, linetype = 'twodash',
+                aes(group = breaks, show.legend = FALSE)
+    )  +
+    guides(colour = FALSE) +
+    geom_vline(data = verticalLines
+               ,aes(xintercept = vline),
+               color = "blue", size = .5
+               ,alpha = .8) +
+    geom_vline(data = dt_deaths_breakpoints %>% 
+                 select(breakpoints, county, date ) %>% 
+                 filter(!is.na( breakpoints))
+               ,aes(xintercept = date),
+               color = "blue", size = .5
+               ,alpha = .5) +
+    geom_text(data = dt_deaths_breakpoints %>% 
+                select(breakpoints, county, date ) %>% 
+                filter(!is.na( breakpoints)) %>% 
+                left_join( dt_deaths_breakpoints %>% 
+                             select(county, count) %>% 
+                             group_by(county) %>% 
+                             arrange(desc(count)) %>% 
+                             distinct(county, .keep_all = TRUE ) )
+              ,aes(x = date
+                   ,y = count
+                   ,label = format(date, "%x")),
+              #hjust = 0,
+              #vjust = -1.50, 
+              angle = 0, 
+              size = 3 
+              ,colour = "blue") +
+    theme_plot +
+    scale_y_continuous(label = human_numbers
+                       ,expand = expansion(mult = c(0.1, .25))) +
+    labs(title = "Structural change analysis of daily new deaths"
+         ,subtitle = "blue lines with dates reflect when there was a break in the trend for each county"
+         ,y = "Cases"
+         ,x = ""
+         ,caption = paste("Note: new break trends can developed as new daily counts are included.
+                          Sources: The New York Times, https://github.com/nytimes/covid-19-data accessed"
+                          ,data_Date
+                          ,"(Covid19)")
+    )
+  
+ print(plot_Strc_Chng_deaths)
+  
 }
+
+
 
 if( !file.exists("cb_2018_us_county_500k.Rdata")) {
   

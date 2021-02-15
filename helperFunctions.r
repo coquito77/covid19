@@ -497,7 +497,7 @@ calendarHeatmap <- function(dates, values, title = "", subtitle = "", legendtitl
         title.position = 'top',
         title.hjust = 0.5
       ),
-  ,labels = fillBreaks %>% scales::comma(.)) +    #
+  ,labels = fillBreaks %>% human_numbers()) + #scales::comma(.)) +    #
     # scale_fill_gradientn(colours = c("#D61818", "#FFAE63", "#FFFFBD", "#B5E384"),
     #                      na.value = "white",
     #                      name = legendtitle,
