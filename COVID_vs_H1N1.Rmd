@@ -2611,6 +2611,8 @@ if(FALSE) {
   
   rm(list = ls()) #start with empty workspace
   
+  gc()
+  
   load("wklyCnts.RData")
   
   wklyCnts_t <- wklyCnts %>% 
@@ -2686,11 +2688,11 @@ if(FALSE) {
     group_by(Finalstart, final_MMWRWeek) %>%
     slice(1) %>%
     ggplot() +
-    geom_line( aes(x = final_MMWRWeek , y = PcntNum
+    geom_line( aes(x = Finalstart, y = PcntNum
                    ,color = FinalstartWeekYear
     ),
     alpha = .5) +
-    geom_point( aes(x = final_MMWRWeek , y = PcntNum
+    geom_point( aes(x = Finalstart, y = PcntNum
                     ,color = FinalstartWeekYear
     ),
     alpha = .5) + 
@@ -2698,6 +2700,26 @@ if(FALSE) {
                   ,  breaks = '4 weeks') +
     theme(legend.position = "top"
           ,axis.text.x = element_text(angle = 90, hjust = 1))
+  
+  wklyCnts_t  %>% # some pcnts are dif eg week 2017-48 has more than one value reported
+    arrange(desc(iteration)) %>%
+    distinct(Finalstart, final_MMWRWeek, .keep_all = TRUE) %>%
+    ggplot() +
+    geom_line( aes(x = final_MMWRWeek, y = PcntNum
+                   ,color = FinalstartWeekYear
+                   ,group = FinalstartWeekYear
+    ),
+    alpha = .5) +
+    geom_point( aes(x = final_MMWRWeek, y = PcntNum
+                    ,color = FinalstartWeekYear
+                    ,group = FinalstartWeekYear
+    ),
+    alpha = .5) + 
+    # scale_x_date( date_labels = "%Y-%U"
+    #               ,  breaks = '4 weeks') +
+    theme(legend.position = "top"
+          ,axis.text.x = element_text(angle = 90, hjust = 1))
+  
 
   # assign the MMWR week https://wwwn.cdc.gov/nndss/document/MMWR_Week_overview.pdf
   
